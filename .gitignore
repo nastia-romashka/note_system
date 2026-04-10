@@ -1,0 +1,40 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.coverprofile
+coverage.out
+
+# Build output
+bin/
+dist/
+build/
+app/build/
+
+# Runtime artifacts
+*.log
+app/logs/
+*.pid
+*.sock
+app/cmd/main/app.sock
+
+# Environment and local config overrides
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+.DS_Store
+
+# Go workspace files
+go.work
+go.work.sum

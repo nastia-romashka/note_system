@@ -1,0 +1,64 @@
+@baseUrl = http://localhost:8080
+@accessToken = paste_access_token_here
+@refreshToken = paste_refresh_token_here
+
+### Регистрация пользователя
+POST {{baseUrl}}/api/signup
+Content-Type: application/json
+
+{
+  "username": "new_user",
+  "password": "secret",
+  "email": "new_user@example.com"
+}
+
+### Логин
+POST {{baseUrl}}/api/auth
+Content-Type: application/json
+
+{
+  "username": "me",
+  "password": "pass"
+}
+
+### Обновление access token по refresh token
+PUT {{baseUrl}}/api/auth
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### Проверка heartbeat
+GET {{baseUrl}}/api/heartbeat
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Получить категории
+GET {{baseUrl}}/api/categories
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Создать категорию
+POST {{baseUrl}}/api/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Work",
+  "color": "#4F46E5"
+}
+
+### Частично обновить категорию
+PATCH {{baseUrl}}/api/categories/category_id
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Updated category",
+  "color": "#0EA5E9"
+}
+
+### Удалить категорию
+DELETE {{baseUrl}}/api/categories/category_id
+Authorization: Bearer {{accessToken}}
