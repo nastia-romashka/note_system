@@ -1,0 +1,74 @@
+@baseUrl = http://localhost:8080
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI3NzgwM2MxYS04YzFhLTQ5MmEtODliZS1mMjE5NzM1YjJhZWYiLCJhdWQiOiJ1c2VycyIsImV4cCI6MTc3NTk4ODYxNSwiZW1haWwiOiJlbWFpbEB3aWxsLmJlLmhlcmUifQ.PbzwIeEMuT5e07qYIcN3hAxM_Fw8t41fyZG7EURgirE
+@refreshToken = f6076076-03bd-449b-8bb4-ae8aa0d29e69
+@categoryUuid = 8cbf1003-f305-42b2-bde8-5b8ec0809397
+
+### API Service: Signup
+POST {{baseUrl}}/api/signup
+Content-Type: application/json
+
+{
+  "username": "new_user",
+  "password": "secret",
+  "email": "new_user@example.com"
+}
+
+### API Service: Auth
+POST {{baseUrl}}/api/auth
+Content-Type: application/json
+
+{
+  "username": "me",
+  "password": "pass"
+}
+
+### API Service: Heartbeat
+GET {{baseUrl}}/api/heartbeat
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### API Service: Refresh access token
+PUT {{baseUrl}}/api/auth
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### Integration: Get categories via api_service -> category_service
+GET {{baseUrl}}/api/categories
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Integration: Create root category
+POST {{baseUrl}}/api/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Work"
+}
+
+### Integration: Create sub category
+POST {{baseUrl}}/api/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Work child",
+  "parent_uuid": "{{categoryUuid}}"
+}
+
+### Integration: Update category
+PATCH {{baseUrl}}/api/categories/{{categoryUuid}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Updated Work"
+}
+
+### Integration: Delete category
+DELETE {{baseUrl}}/api/categories/{{categoryUuid}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json

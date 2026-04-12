@@ -1,0 +1,16 @@
+debug: true
+log_level: DEBUG
+logger_name: category_service
+app_host: 0.0.0.0
+app_port: 8081
+app_title: Category Service
+api_prefix: /api
+cors_allowed_origins:
+  - http://localhost:3000
+  - http://localhost:5173
+neo4j_scheme: bolt
+neo4j_hostname: localhost
+neo4j_port: 7687
+neo4j_login: neo4j
+neo4j_password: testtest
+neo4j_database: neo4j

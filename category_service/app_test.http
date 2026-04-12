@@ -1,0 +1,43 @@
+### Get categories
+GET http://localhost:8081/api/categories?user_uuid=77803c1a-8c1a-492a-89be-f219735b2aef
+Accept: application/json
+
+### Create root category
+POST http://localhost:8081/api/categories
+Accept: application/json
+Content-Type: application/json
+
+{
+  "name": "New category 1",
+  "user_uuid": "77803c1a-8c1a-492a-89be-f219735b2aef"
+}
+
+### Create sub category
+POST http://localhost:8081/api/categories
+Accept: application/json
+Content-Type: application/json
+
+{
+  "name": "Sub category 1",
+  "user_uuid": "77803c1a-8c1a-492a-89be-f219735b2aef",
+  "parent_uuid": "35e156b2-43ec-43cb-9460-5a45540aaf9a" 
+}
+
+### Update category
+PATCH http://localhost:8081/api/categories/UUID_КАТЕГОРИИ
+Accept: application/json
+Content-Type: application/json
+
+{
+  "name": "2 sub",
+  "parent_uuid": "..."
+}
+
+### Delete category
+DELETE http://localhost:8081/api/categories/UUID_КАТЕГОРИИ
+Accept: application/json
+Content-Type: application/json
+
+{
+  "user_uuid": "77803c1a-8c1a-492a-89be-f219735b2aef"
+}

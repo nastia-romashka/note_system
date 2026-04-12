@@ -1,0 +1,48 @@
+### health
+GET http://localhost:8082/health
+
+### create
+POST http://localhost:8082/api/notes
+Content-Type: application/json
+
+{
+  "header": "First note",
+  "body": "This is a sample note body.",
+  "category_uuid": "123",
+  "tags": []
+}
+
+### get one
+GET http://localhost:8082/api/notes/{{note_uuid}}
+
+### get by category
+GET http://localhost:8082/api/notes?category_uuid=123
+
+### create tag
+POST http://localhost:8082/api/tags
+Content-Type: application/json
+
+{
+  "name": "work"
+}
+
+### get tags
+GET http://localhost:8082/api/tags
+
+### get tags by ids
+GET http://localhost:8082/api/tags?id={{tag_uuid}}
+
+### patch
+PATCH http://localhost:8082/api/notes/{{note_uuid}}
+Content-Type: application/json
+
+{
+  "header": "Updated title",
+  "tags": ["{{tag_uuid}}"]
+}
+
+### delete
+DELETE http://localhost:8082/api/notes/{{note_uuid}}
+
+### delete tag
+DELETE http://localhost:8082/api/tags/{{tag_uuid}}

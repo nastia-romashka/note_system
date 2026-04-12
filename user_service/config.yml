@@ -1,0 +1,14 @@
+is_debug: true
+mongo:
+  scheme: mongodb
+  host: localhost
+  port: 27017
+  username: ""
+  password: ""
+  auth_source: admin
+  database: notes_system
+  collection: users
+listen:
+  type: port
+  bind_ip: localhost
+  port: 8083

@@ -1,9 +1,0 @@
----
-
-is_debag: true
-jwt:
-  secret: $3cr3t
-listen:
-  type: port
-  bind_ip: localhost
-  port: 8080

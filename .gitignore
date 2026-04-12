@@ -13,19 +13,21 @@ coverage.out
 bin/
 dist/
 build/
-app/build/
+api_service/build/
 
 # Runtime artifacts
 *.log
-app/logs/
+api_service/logs/
 *.pid
 *.sock
-app/cmd/main/app.sock
+api_service/cmd/main/app.sock
 
 # Environment and local config overrides
 .env
 .env.*
 !.env.example
+.venv/
+category_service/.venv/
 
 # Editor and OS files
 .idea/
