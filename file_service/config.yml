@@ -1,0 +1,13 @@
+is_debug: true
+
+minio:
+  endpoint: 127.0.0.1:9000
+  use_ssl: false
+
+listen:
+  type: port
+  bind_ip: 127.0.0.1
+  port: "8085"
+
+upload:
+  max_file_size_mb: 32

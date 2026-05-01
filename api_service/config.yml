@@ -9,3 +9,9 @@ listen:
   port: 8080
 category_service:
   url: http://localhost:8081/api
+note_service:
+  url: http://localhost:8082/api
+file_service:
+  url: http://localhost:8085/api
+user_service:
+  url: http://localhost:8083/api

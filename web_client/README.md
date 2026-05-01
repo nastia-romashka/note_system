@@ -1,3 +1,41 @@
 # Web Client
 
-Placeholder for the future frontend application.
+Локальный фронтенд для `api_service`.
+
+## Запуск
+
+1. Перейди в папку `web_client`.
+2. Установи зависимости:
+
+```bash
+npm install
+```
+
+3. Запусти dev-server:
+
+```bash
+npm run dev
+```
+
+## Preview mode
+
+Если хочешь смотреть все три страницы без запуска backend, создай файл `.env.local`:
+
+```bash
+VITE_UI_PREVIEW=true
+```
+
+В этом режиме:
+- доступны страницы `Вход`, `Регистрация` и `Заметки`
+- данные берутся из моков
+- запросы к backend не отправляются
+
+## Работа с backend
+
+Если `preview mode` выключен, фронтенд работает с реальными сервисами. В dev-режиме `Vite` автоматически проксирует `/api` на `http://127.0.0.1:8080`, поэтому отдельный CORS для локального запуска не нужен.
+
+Если нужно изменить адрес `api_service`, создай файл `.env` в `web_client`:
+
+```bash
+VITE_API_BASE_URL=http://localhost:8080
+```

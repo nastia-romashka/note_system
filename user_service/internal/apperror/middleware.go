@@ -22,8 +22,8 @@ func Middleware(next func(http.ResponseWriter, *http.Request) error) http.Handle
 
 		w.Header().Set("Content-Type", "application/json")
 
-		appErr, ok := err.(*AppError)
-		if !ok {
+		var appErr *AppError
+		if !errors.As(err, &appErr) {
 			appErr = SystemError(err).(*AppError)
 			logger.Error(
 				"unhandled request error",

@@ -1,0 +1,44 @@
+@host = http://127.0.0.1:8085
+@note_uuid = 2f1a9d4e-31e9-4f7f-b505-a7b661e8f001
+@empty_note_uuid = 8c9f8fe5-2dd6-4b8e-bc4c-44d70f2d7a11
+@file_id = replace-with-file-id
+@missing_file_id = 00000000-0000-0000-0000-000000000000
+
+### Health
+GET {{host}}/health
+
+### Upload file to note
+POST {{host}}/api/files
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="note_uuid"
+
+{{note_uuid}}
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="hello.txt"
+Content-Type: text/plain
+
+hello from file_service
+--WebAppBoundary--
+
+### List note files
+GET {{host}}/api/files?note_uuid={{note_uuid}}
+
+### List files for empty note bucket
+GET {{host}}/api/files?note_uuid={{empty_note_uuid}}
+
+### Download file
+GET {{host}}/api/files/{{file_id}}?note_uuid={{note_uuid}}
+
+### Download missing file
+GET {{host}}/api/files/{{missing_file_id}}?note_uuid={{note_uuid}}
+
+### Delete file
+DELETE {{host}}/api/files/{{file_id}}?note_uuid={{note_uuid}}
+
+### List files after delete
+GET {{host}}/api/files?note_uuid={{note_uuid}}
+
+### Download deleted file
+GET {{host}}/api/files/{{file_id}}?note_uuid={{note_uuid}}

@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"myproject/internal/apperror"
+	userclient "myproject/internal/client/user"
 	"myproject/internal/config"
 	"myproject/pkg/cache"
 	"myproject/pkg/logging"
@@ -17,9 +19,8 @@ import (
 )
 
 const (
-	autURL       = "/api/auth"
-	signupURL    = "/api/signup"
-	testUserUUID = "77803c1a-8c1a-492a-89be-f219735b2aef"
+	autURL    = "/api/auth"
+	signupURL = "/api/signup"
 )
 
 type user struct {
@@ -37,84 +38,100 @@ type refresh struct {
 }
 
 type Handler struct {
-	Logger  logging.Logger
-	RTCache cache.Repository
+	Logger      logging.Logger
+	RTCache     cache.Repository
+	UserService userclient.UserService
 }
 
 func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodPost, autURL, h.Auth)
-	router.HandlerFunc(http.MethodPut, autURL, h.Auth)
-	router.HandlerFunc(http.MethodPost, signupURL, h.Signup)
+	router.HandlerFunc(http.MethodPost, autURL, apperror.Middleware(h.Auth))
+	router.HandlerFunc(http.MethodPut, autURL, apperror.Middleware(h.Auth))
+	router.HandlerFunc(http.MethodPost, signupURL, apperror.Middleware(h.Signup))
 }
 
-func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) error {
 	var nu newUser
 	if err := json.NewDecoder(r.Body).Decode(&nu); err != nil {
-		h.Logger.Error(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return apperror.BadRequestError("can't decode")
 	}
 
 	defer r.Body.Close()
 
-	//TODO validtor username and password
-	//TODO create user using UserService
-	jsonBytes, errCode := h.generateAccessToken(w)
+	userUuid, err := h.UserService.CreateUser(r.Context(), userclient.CreateUserDTO{
+		Username: nu.Username,
+		Email:    nu.Email,
+		Password: nu.Password,
+	})
+	if err != nil {
+		return err
+	}
+
+	jsonBytes, errCode := h.generateAccessToken(userUuid, nu.Email)
 	if errCode != 0 {
-		w.WriteHeader(errCode)
-		return
+		return apperror.APIError(errCode, "API-50001", "token generation failed", "token generation failed")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated) // 201
-	w.Write(jsonBytes)
+	_, _ = w.Write(jsonBytes)
+	return nil
 }
 
-func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Auth(w http.ResponseWriter, r *http.Request) error {
+	var userUuid string
+	var email string
+
 	switch r.Method {
 	case http.MethodPost:
 		var u user
 		if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
-			h.Logger.Fatal(err)
+			return apperror.BadRequestError("can't decode")
 		}
 
 		defer r.Body.Close()
-		// TODO client to UserService and get user by username and password
-		// for now sub check
-		if u.Username != "me" || u.Password != "pass" {
-			w.WriteHeader(http.StatusNotFound)
-			return
+
+		authUser, err := h.UserService.Authenticate(r.Context(), userclient.AuthUserDTO{
+			Username: u.Username,
+			Password: u.Password,
+		})
+		if err != nil {
+			return err
 		}
+		userUuid = authUser.Uuid
+		email = authUser.Email
 	case http.MethodPut:
 		var refreshTokenS refresh
 		if err := json.NewDecoder(r.Body).Decode(&refreshTokenS); err != nil {
-			h.Logger.Error(err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			return apperror.BadRequestError("can't decode")
 		}
 		defer r.Body.Close()
+
 		userIdBytes, err := h.RTCache.Get([]byte(refreshTokenS.RefreshToken))
-		h.Logger.Info("refresh token user_id: %", userIdBytes)
 		if err != nil {
-			h.Logger.Error(err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+			return apperror.UnauthorizedError("invalid refresh token")
 		}
+
+		userUuid = string(userIdBytes)
+		refreshUser, err := h.UserService.GetUser(r.Context(), userUuid)
+		if err != nil {
+			return err
+		}
+		email = refreshUser.Email
 		h.RTCache.Del([]byte(refreshTokenS.RefreshToken))
 	}
 
-	jsonBytes, errCode := h.generateAccessToken(w)
+	jsonBytes, errCode := h.generateAccessToken(userUuid, email)
 	if errCode != 0 {
-		w.WriteHeader(errCode)
-		return
+		return apperror.APIError(errCode, "API-50001", "token generation failed", "token generation failed")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated) // 201
-	w.Write(jsonBytes)
+	_, _ = w.Write(jsonBytes)
+	return nil
 }
 
-func (h *Handler) generateAccessToken(w http.ResponseWriter) ([]byte, int) {
+func (h *Handler) generateAccessToken(userUUID string, email string) ([]byte, int) {
 	key := []byte(config.GetConfig().JWT.Secret)
 	signer, err := jwt.NewSignerHS(jwt.HS256, key)
 	if err != nil {
@@ -123,14 +140,13 @@ func (h *Handler) generateAccessToken(w http.ResponseWriter) ([]byte, int) {
 
 	builder := jwt.NewBuilder(signer)
 
-	//TODO insert real user data
 	claims := jwt2.UserClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        testUserUUID,
+			ID:        userUUID,
 			Audience:  []string{"users"},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Second * 200)),
 		},
-		Email: "email@will.be.here",
+		Email: email,
 	}
 
 	token, err := builder.Build(claims)
@@ -141,7 +157,7 @@ func (h *Handler) generateAccessToken(w http.ResponseWriter) ([]byte, int) {
 
 	h.Logger.Info("create refresh token")
 	refreshTokenUuid := uuid.New()
-	err = h.RTCache.Set([]byte(refreshTokenUuid.String()), []byte(testUserUUID), 0)
+	err = h.RTCache.Set([]byte(refreshTokenUuid.String()), []byte(userUUID), 0)
 	if err != nil {
 		h.Logger.Error(err)
 		return nil, http.StatusInternalServerError

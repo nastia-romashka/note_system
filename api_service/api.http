@@ -1,27 +1,31 @@
 @baseUrl = http://localhost:8080
-@accessToken = paste_access_token_here
-@refreshToken = paste_refresh_token_here
+@accessToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2OWRjZGIyMjZhYWUwODUzNDM2OGJkOTciLCJhdWQiOiJ1c2VycyIsImV4cCI6MTc3NjA4MTkzMywiZW1haWwiOiJtZTJAZXhhbXBsZS5jb20ifQ.9pLFtoG6yaMbPo9u32nAKAk-m2bP8fgpWb_j4Ih4INo
+@refreshToken = 027c3d90-0276-4591-9f8c-443d0caac69d
+@categoryUuid = paste_category_uuid_here
+@noteUuid = 69dcdc07a092ea62ddc0a7eb
+@tagUuid = 69dcdbc7a092ea62ddc0a7ea
+@fileId = paste_file_id_here
 
-### Регистрация пользователя
+### Signup
 POST {{baseUrl}}/api/signup
 Content-Type: application/json
 
 {
-  "username": "new_user",
-  "password": "secret",
-  "email": "new_user@example.com"
+  "username": "me2",
+  "password": "pass",
+  "email": "me2@example.com"
 }
 
-### Логин
+### Auth
 POST {{baseUrl}}/api/auth
 Content-Type: application/json
 
 {
-  "username": "me",
+  "username": "me2",
   "password": "pass"
 }
 
-### Обновление access token по refresh token
+### Refresh access token
 PUT {{baseUrl}}/api/auth
 Content-Type: application/json
 
@@ -29,36 +33,133 @@ Content-Type: application/json
   "refresh_token": "{{refreshToken}}"
 }
 
-### Проверка heartbeat
+### Heartbeat
 GET {{baseUrl}}/api/heartbeat
 Authorization: Bearer {{accessToken}}
 Accept: application/json
 
-### Получить категории
+### Get categories
 GET {{baseUrl}}/api/categories
 Authorization: Bearer {{accessToken}}
 Accept: application/json
 
-### Создать категорию
+### Create root category
 POST {{baseUrl}}/api/categories
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "name": "Work",
-  "color": "#4F46E5"
+  "name": "Work"
 }
 
-### Частично обновить категорию
-PATCH {{baseUrl}}/api/categories/category_id
+### Create sub category
+POST {{baseUrl}}/api/categories
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "name": "Updated category",
-  "color": "#0EA5E9"
+  "name": "Work child",
+  "parent_uuid": "{{categoryUuid}}"
 }
 
-### Удалить категорию
-DELETE {{baseUrl}}/api/categories/category_id
+### Update category
+PATCH {{baseUrl}}/api/categories/{{categoryUuid}}
 Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Updated Work"
+}
+
+### Delete category
+DELETE {{baseUrl}}/api/categories/{{categoryUuid}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Get tags
+GET {{baseUrl}}/api/tags
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Get tag by ids
+GET {{baseUrl}}/api/tags?id={{tagUuid}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Create tag
+POST {{baseUrl}}/api/tags
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "work"
+}
+
+### Delete tag
+DELETE {{baseUrl}}/api/tags/{{tagUuid}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Get notes by category
+GET {{baseUrl}}/api/notes?category_uuid={{categoryUuid}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Create note
+POST {{baseUrl}}/api/notes
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "header": "First note",
+  "body": "This is a sample note body.",
+  "category_uuid": "{{categoryUuid}}",
+  "tags": []
+}
+
+### Get one note
+GET {{baseUrl}}/api/notes/{{noteUuid}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Update note
+PATCH {{baseUrl}}/api/notes/{{noteUuid}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "header": "Updated note title",
+  "tags": ["{{tagUuid}}"]
+}
+
+### Delete note
+DELETE {{baseUrl}}/api/notes/{{noteUuid}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### List note files
+GET {{baseUrl}}/api/notes/{{noteUuid}}/files
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Upload file to note
+POST {{baseUrl}}/api/notes/{{noteUuid}}/files
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="hello.txt"
+Content-Type: text/plain
+
+hello from api_service file proxy
+--WebAppBoundary--
+
+### Download note file
+GET {{baseUrl}}/api/notes/{{noteUuid}}/files/{{fileId}}
+Authorization: Bearer {{accessToken}}
+Accept: */*
+
+### Delete note file
+DELETE {{baseUrl}}/api/notes/{{noteUuid}}/files/{{fileId}}
+Authorization: Bearer {{accessToken}}
+Accept: application/json

@@ -4,8 +4,14 @@ import (
 	"errors"
 	"fmt"
 	categoryclient "myproject/internal/client/category"
+	fileclient "myproject/internal/client/file"
+	noteclient "myproject/internal/client/note"
+	userclient "myproject/internal/client/user"
 	"myproject/internal/handlers/auth"
 	"myproject/internal/handlers/categories"
+	"myproject/internal/handlers/files"
+	"myproject/internal/handlers/notes"
+	"myproject/internal/handlers/tags"
 
 	"myproject/pkg/handlers/metric"
 	"myproject/pkg/logging"
@@ -39,7 +45,16 @@ func main() {
 	refreshTokenCache := freecache.NewCacheRepo(104857600)
 
 	logger.Println("create and regiser handlers")
-	authHandler := auth.Handler{RTCache: refreshTokenCache, Logger: logger}
+	userService := userclient.NewService(
+		cfg.UserService.URL,
+		"users",
+		logger,
+	)
+	authHandler := auth.Handler{
+		RTCache:     refreshTokenCache,
+		Logger:      logger,
+		UserService: userService,
+	}
 	authHandler.Register(router)
 
 	metricHandler := metric.Handler{Logger: logger}
@@ -55,6 +70,35 @@ func main() {
 		CategoryService: categoryService,
 	}
 	categoriesHandler.Register(router)
+
+	noteService := noteclient.NewService(
+		cfg.NoteService.URL,
+		"notes",
+		logger,
+	)
+	notesHandler := notes.Handler{
+		Logger:      logger,
+		NoteService: noteService,
+	}
+	notesHandler.Register(router)
+
+	tagsHandler := tags.Handler{
+		Logger:      logger,
+		NoteService: noteService,
+	}
+	tagsHandler.Register(router)
+
+	fileService := fileclient.NewService(
+		cfg.FileService.URL,
+		"files",
+		logger,
+	)
+	filesHandler := files.Handler{
+		Logger:      logger,
+		NoteService: noteService,
+		FileService: fileService,
+	}
+	filesHandler.Register(router)
 
 	logger.Println("start application")
 	start(router, logger, cfg)

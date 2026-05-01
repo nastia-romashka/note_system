@@ -15,6 +15,15 @@ type Config struct {
 	CategoryService struct {
 		URL string `yaml:"url" env-required:"true"`
 	} `yaml:"category_service" env-required:"true"`
+	NoteService struct {
+		URL string `yaml:"url" env-required:"true"`
+	} `yaml:"note_service" env-required:"true"`
+	FileService struct {
+		URL string `yaml:"url" env-required:"true"`
+	} `yaml:"file_service" env-required:"true"`
+	UserService struct {
+		URL string `yaml:"url" env-required:"true"`
+	} `yaml:"user_service" env-required:"true"`
 
 	Listen struct {
 		Type   string `yaml:"type" env-default:"port"`

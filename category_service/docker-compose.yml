@@ -2,7 +2,7 @@ services:
   neo4j:
     image: neo4j:2026.02.2
     container_name: ns-cs-neo4j
-    restart: always
+    restart: "no"
     ports:
       - "7474:7474"
       - "7687:7687"
