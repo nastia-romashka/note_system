@@ -1,0 +1,201 @@
+services:
+  api_service:
+    build:
+      context: ./api_service
+    image: ${DOCKERHUB_NAMESPACE:-local}/notes-system-api:latest
+    ports:
+      - "8080:8080"
+    environment:
+      API_SERVICE_BIND_IP: 0.0.0.0
+      API_SERVICE_CATEGORY_URL: http://category_service:8081/api
+      API_SERVICE_NOTE_URL: http://note_service:8082/api
+      API_SERVICE_FILE_URL: http://file_service:8085/api
+      API_SERVICE_USER_URL: http://user_service:8083/api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      category_service:
+        condition: service_healthy
+      note_service:
+        condition: service_healthy
+      user_service:
+        condition: service_healthy
+      file_service:
+        condition: service_healthy
+
+  note_service:
+    build:
+      context: ./note_service
+    image: ${DOCKERHUB_NAMESPACE:-local}/notes-system-note:latest
+    ports:
+      - "8082:8082"
+    environment:
+      NOTE_SERVICE_BIND_IP: 0.0.0.0
+      NOTE_SERVICE_MONGO_HOST: mongo_notes
+      NOTE_SERVICE_MONGO_PORT: 27017
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      mongo_notes:
+        condition: service_healthy
+
+  user_service:
+    build:
+      context: ./user_service
+    image: ${DOCKERHUB_NAMESPACE:-local}/notes-system-user:latest
+    ports:
+      - "8083:8083"
+    environment:
+      USER_SERVICE_BIND_IP: 0.0.0.0
+      USER_SERVICE_POSTGRES_HOST: postgres_users
+      USER_SERVICE_POSTGRES_PORT: 5432
+      USER_SERVICE_POSTGRES_DATABASE: users_system
+      USER_SERVICE_POSTGRES_USERNAME: notes_user
+      USER_SERVICE_POSTGRES_PASSWORD: notes_password
+      USER_SERVICE_POSTGRES_SSL_MODE: disable
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8083/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      postgres_users:
+        condition: service_healthy
+
+  file_service:
+    build:
+      context: ./file_service
+    image: ${DOCKERHUB_NAMESPACE:-local}/notes-system-file:latest
+    ports:
+      - "8085:8085"
+    env_file:
+      - ./file_service/.env
+    environment:
+      FILE_SERVICE_BIND_IP: 0.0.0.0
+      FILE_SERVICE_MINIO_ENDPOINT: minio:9000
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8085/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  category_service:
+    build:
+      context: ./category_service
+    image: ${DOCKERHUB_NAMESPACE:-local}/notes-system-category:latest
+    ports:
+      - "8081:8081"
+    environment:
+      NEO4J_HOSTNAME: neo4j
+      NEO4J_PORT: 7687
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    depends_on:
+      neo4j:
+        condition: service_healthy
+
+  web_client:
+    build:
+      context: ./web_client
+    image: ${DOCKERHUB_NAMESPACE:-local}/notes-system-web:latest
+    ports:
+      - "5173:80"
+    depends_on:
+      api_service:
+        condition: service_healthy
+
+  mongo_notes:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: notes_system
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand({ ping: 1 }).ok\" mongodb://127.0.0.1:27017/admin | grep 1 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - mongo_notes_data:/data/db
+
+  postgres_users:
+    image: postgres:17
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: users_system
+      POSTGRES_USER: notes_user
+      POSTGRES_PASSWORD: notes_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notes_user -d users_system"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - postgres_users_data:/var/lib/postgresql/data
+      - ./user_service/migrations:/docker-entrypoint-initdb.d:ro
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-06-13T11-33-47Z
+    env_file:
+      - ./file_service/.env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  neo4j:
+    image: neo4j:2026.02.2
+    environment:
+      NEO4J_AUTH: neo4j/testtest
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -a bolt://127.0.0.1:7687 -u neo4j -p testtest \"RETURN 1;\" >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - ./category_service/export/neo4j/data:/data
+      - ./category_service/export/neo4j/conf:/conf
+      - ./category_service/export/neo4j/logs:/logs
+      - ./category_service/export/neo4j/import:/import
+      - ./category_service/export/neo4j/plugins:/plugins
+
+volumes:
+  mongo_notes_data:
+  postgres_users_data:
+  minio_data:

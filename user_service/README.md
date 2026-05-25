@@ -1,12 +1,9 @@
 # User Service
 
-Go microservice for users, structured the same way as `note_service`:
+Go microservice for users. It exposes the same HTTP API as before, but stores users in PostgreSQL.
 
-- `cmd/main`
-- `internal/config`
-- `internal/apperror`
-- `internal/handlers/users`
-- `internal/service/users`
-- `internal/storage/db`
-- `pkg/logging`
-- `pkg/shutdown`
+- application code: `app/`
+- database migrations: `migrations/`
+- local runtime/config files: `config.yml`, `app_test.http`, `Dockerfile`
+- main package: `app/cmd/main`
+- layers: `app/internal/handlers/users`, `app/internal/service/users`, `app/internal/storage/db`

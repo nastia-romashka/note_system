@@ -1,0 +1,3 @@
+app/cmd/main/app.sock
+logs/
+*.log

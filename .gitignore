@@ -14,10 +14,12 @@ bin/
 dist/
 build/
 api_service/build/
+web_client/app/dist/
 
 # Runtime artifacts
 *.log
 api_service/logs/
+user_service/logs/
 *.pid
 *.sock
 api_service/cmd/main/app.sock
@@ -28,6 +30,8 @@ api_service/cmd/main/app.sock
 !.env.example
 .venv/
 category_service/.venv/
+node_modules/
+web_client/app/node_modules/
 
 # Editor and OS files
 .idea/

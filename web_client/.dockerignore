@@ -1,0 +1,8 @@
+app/node_modules/
+app/dist/
+app/.env
+app/.env.*
+app/README.md
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

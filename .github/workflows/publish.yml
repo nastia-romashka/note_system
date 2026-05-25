@@ -1,0 +1,137 @@
+name: Build and Publish Docker Images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api_service: ${{ steps.filter.outputs.api_service }}
+      note_service: ${{ steps.filter.outputs.note_service }}
+      user_service: ${{ steps.filter.outputs.user_service }}
+      file_service: ${{ steps.filter.outputs.file_service }}
+      category_service: ${{ steps.filter.outputs.category_service }}
+      web_client: ${{ steps.filter.outputs.web_client }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed services
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api_service:
+              - 'api_service/**'
+            note_service:
+              - 'note_service/**'
+            user_service:
+              - 'user_service/**'
+            file_service:
+              - 'file_service/**'
+            category_service:
+              - 'category_service/**'
+            web_client:
+              - 'web_client/**'
+            shared:
+              - 'docker-compose.yml'
+              - 'deploy/**'
+              - '.github/workflows/**'
+
+  api_service:
+    needs: changes
+    if: needs.changes.outputs.api_service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./api_service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/notes-system-api:latest
+
+  note_service:
+    needs: changes
+    if: needs.changes.outputs.note_service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./note_service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/notes-system-note:latest
+
+  user_service:
+    needs: changes
+    if: needs.changes.outputs.user_service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./user_service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/notes-system-user:latest
+
+  file_service:
+    needs: changes
+    if: needs.changes.outputs.file_service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./file_service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/notes-system-file:latest
+
+  category_service:
+    needs: changes
+    if: needs.changes.outputs.category_service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./category_service
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/notes-system-category:latest
+
+  web_client:
+    needs: changes
+    if: needs.changes.outputs.web_client == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./web_client
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/notes-system-web:latest

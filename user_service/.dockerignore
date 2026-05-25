@@ -1,0 +1,8 @@
+logs/
+*.log
+app/cmd/main/app.sock
+.env
+.env.*
+README.md
+app_test.http
+migrations/
