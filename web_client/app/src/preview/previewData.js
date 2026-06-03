@@ -35,7 +35,15 @@ export const PREVIEW_DATA = {
           "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
         short_body:
           "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        category_uuid: "cat-1",
         tags: ["tag-1", "tag-2", "tag-3"],
+        created_date: 1780226400,
+        updated_at: 1780312800,
+        event: {
+          enabled: true,
+          start_at: 1780402800,
+          end_at: 1780406400,
+        },
       },
     ],
     "cat-1-1": [
@@ -46,7 +54,15 @@ export const PREVIEW_DATA = {
           "Структурируй мысли по вложенным категориям и собирай связанные материалы в одном месте. Такой режим помогает посмотреть будущий интерфейс без запуска backend.",
         short_body:
           "Структурируй мысли по вложенным категориям и собирай связанные материалы в одном месте.",
+        category_uuid: "cat-1-1",
         tags: ["tag-2"],
+        created_date: 1780140000,
+        updated_at: 1780312800,
+        event: {
+          enabled: true,
+          start_at: 1780489200,
+          end_at: 1780492800,
+        },
       },
     ],
     "cat-1-1-1": [],
@@ -58,7 +74,10 @@ export const PREVIEW_DATA = {
           "Отдельная область для рабочих заметок, быстрых черновиков и небольших материалов, которые нужны в течение дня.",
         short_body:
           "Отдельная область для рабочих заметок, быстрых черновиков и небольших материалов.",
+        category_uuid: "cat-2",
         tags: [],
+        created_date: 1780053600,
+        updated_at: 1780312800,
       },
     ],
   },

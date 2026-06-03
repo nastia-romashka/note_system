@@ -34,6 +34,7 @@ func NewService(baseURL string, resource string, logger logging.Logger) NoteServ
 
 type NoteService interface {
 	GetNotesByCategory(ctx context.Context, categoryUuid, userUuid string) ([]byte, error)
+	GetCalendarNotes(ctx context.Context, from, to int64, userUuid string) ([]byte, error)
 	GetNote(ctx context.Context, uuid, userUuid string) ([]byte, error)
 	GetStats(ctx context.Context, userUuid string) (NoteStats, error)
 	CreateNote(ctx context.Context, dto CreateNoteDTO) (string, error)
@@ -126,6 +127,59 @@ func (c *client) GetNote(ctx context.Context, uuid, userUuid string) ([]byte, er
 			return nil, fmt.Errorf("failed to read body: %w", err)
 		}
 		return note, nil
+	}
+
+	return nil, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) GetCalendarNotes(ctx context.Context, from, to int64, userUuid string) ([]byte, error) {
+	var notes []byte
+
+	filters := []rest.FilterOptions{
+		{
+			Field:  "user_uuid",
+			Values: []string{userUuid},
+		},
+		{
+			Field:  "from",
+			Values: []string{fmt.Sprintf("%d", from)},
+		},
+		{
+			Field:  "to",
+			Values: []string{fmt.Sprintf("%d", to)},
+		},
+	}
+
+	uri, err := c.base.BuildURL("calendar", filters)
+	if err != nil {
+		return notes, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, uri, nil)
+	if err != nil {
+		return notes, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return notes, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		notes, err = response.ReadBody()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read body: %w", err)
+		}
+		return notes, nil
 	}
 
 	return nil, apperror.APIError(

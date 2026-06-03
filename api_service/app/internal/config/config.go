@@ -26,6 +26,9 @@ type Config struct {
 	UserService struct {
 		URL string `yaml:"url" env:"API_SERVICE_USER_URL" env-required:"true"`
 	} `yaml:"user_service" env-required:"true"`
+	SearchService struct {
+		URL string `yaml:"url" env:"API_SERVICE_SEARCH_URL" env-required:"true"`
+	} `yaml:"search_service" env-required:"true"`
 
 	Listen struct {
 		Type   string `yaml:"type" env:"API_SERVICE_LISTEN_TYPE" env-default:"port"`

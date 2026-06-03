@@ -5,9 +5,11 @@ from fastapi import APIRouter, Body, Depends, Query, Request, Response, status
 from constants import LOCATION
 from dao.model.dto import (
     CreateCategoryDTO,
+    CreateUserGraphLinkDTO,
     CreateGraphNoteDTO,
     DeleteCategoryDTO,
     DeleteGraphNoteDTO,
+    DeleteUserGraphLinkDTO,
     LinkGraphNotesDTO,
     UpdateCategoryDTO,
     UpdateGraphNoteDTO,
@@ -152,6 +154,42 @@ async def unlink_notes(
         "unlinked graph notes source=%s target=%s",
         source_note_uuid,
         target_note_uuid,
+    )
+    return Response(status_code=HTTPStatus.NO_CONTENT)
+
+
+@router.post(
+    "/api/graph/links",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def create_user_graph_link(
+    request: Request,
+    link_dto: CreateUserGraphLinkDTO,
+    service: CategoryService = Depends(get_category_service),
+) -> Response:
+    service.create_user_graph_link(link=link_dto)
+    request.app.state.logger.debug(
+        "created user graph link source=%s target=%s",
+        link_dto.source_id,
+        link_dto.target_id,
+    )
+    return Response(status_code=HTTPStatus.NO_CONTENT)
+
+
+@router.delete(
+    "/api/graph/links",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_user_graph_link(
+    request: Request,
+    link_dto: DeleteUserGraphLinkDTO,
+    service: CategoryService = Depends(get_category_service),
+) -> Response:
+    service.delete_user_graph_link(link=link_dto)
+    request.app.state.logger.debug(
+        "deleted user graph link source=%s target=%s",
+        link_dto.source_id,
+        link_dto.target_id,
     )
     return Response(status_code=HTTPStatus.NO_CONTENT)
 

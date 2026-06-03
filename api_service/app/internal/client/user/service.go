@@ -38,6 +38,7 @@ type UserService interface {
 	CreateUser(ctx context.Context, dto CreateUserDTO) (string, error)
 	GetUser(ctx context.Context, uuid string) (User, error)
 	GetProfile(ctx context.Context, uuid string) (UserProfile, error)
+	UpdateProfile(ctx context.Context, uuid string, dto UpdateUserProfileDTO) error
 	GetActions(ctx context.Context, uuid string, limit, offset int) ([]UserAction, error)
 	CreateAction(ctx context.Context, uuid string, dto CreateUserActionDTO) error
 	Authenticate(ctx context.Context, dto AuthUserDTO) (User, error)
@@ -162,6 +163,43 @@ func (c *client) GetProfile(ctx context.Context, uuid string) (profile UserProfi
 	}
 
 	return profile, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) UpdateProfile(ctx context.Context, uuid string, dto UpdateUserProfileDTO) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s/profile", c.Resource, uuid), nil)
+	if err != nil {
+		return fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(dto)
+	if err != nil {
+		return fmt.Errorf("failed to marshal dto: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, uri, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		return nil
+	}
+
+	return apperror.APIError(
 		response.StatusCode(),
 		response.Error.ErrorCode,
 		response.Error.Message,

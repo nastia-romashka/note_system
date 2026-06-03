@@ -1,6 +1,7 @@
 export default function NotesSection({
   loading,
   notes,
+  selectedCategory,
   selectedNote,
   selectedNoteId,
   onSelectNote,
@@ -12,6 +13,7 @@ export default function NotesSection({
   onCreateNote,
   onUpdateNote,
   onDeleteNote,
+  onOpenDuplicateDialog,
   files,
   onDownloadFile,
   onDeleteFile,
@@ -29,17 +31,14 @@ export default function NotesSection({
               <header className="sheet-header">
                 <h2>Редактирование заметки</h2>
                 <div className="sheet-header-actions">
-                  <span>{loading ? "Сохранение..." : new Date().toLocaleDateString("ru-RU")}</span>
-                  <button className="secondary-button" type="button" onClick={() => onSelectNote("")}>
-                    К созданию
-                  </button>
+                  <span>{loading ? "Сохранение..." : formatUpdatedAt(selectedNote.updated_at || selectedNote.created_date)}</span>
                 </div>
               </header>
               <form className="note-creator" onSubmit={onUpdateNote}>
                 <input
                   value={noteEditorForm.header}
                   onChange={(event) => onNoteEditorFormChange((current) => ({ ...current, header: event.target.value }))}
-                  placeholder="Имя заметки"
+                  placeholder="Название заметки"
                 />
                 <textarea
                   rows={10}
@@ -47,6 +46,70 @@ export default function NotesSection({
                   onChange={(event) => onNoteEditorFormChange((current) => ({ ...current, body: event.target.value }))}
                   placeholder="Текст заметки"
                 />
+
+                <div className="schedule-card">
+                  <div className="schedule-header">
+                    <div className="side-title">Дата и время</div>
+                    <label className="schedule-toggle">
+                      <input
+                        type="checkbox"
+                        checked={noteEditorForm.scheduled}
+                        onChange={(event) =>
+                          onNoteEditorFormChange((current) => ({ ...current, scheduled: event.target.checked }))
+                        }
+                      />
+                      <span>Запланировать заметку</span>
+                    </label>
+                  </div>
+
+                  {noteEditorForm.scheduled ? (
+                    <div className="schedule-fields">
+                      <label className="schedule-field">
+                        <span>Дата</span>
+                        <input
+                          type="date"
+                          value={noteEditorForm.eventDate}
+                          onChange={(event) =>
+                            onNoteEditorFormChange((current) => ({ ...current, eventDate: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="schedule-field">
+                        <span>Начало</span>
+                        <input
+                          type="time"
+                          value={noteEditorForm.eventStartTime}
+                          onChange={(event) =>
+                            onNoteEditorFormChange((current) => ({ ...current, eventStartTime: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="schedule-field">
+                        <span>Конец</span>
+                        <input
+                          type="time"
+                          value={noteEditorForm.eventEndTime}
+                          onChange={(event) =>
+                            onNoteEditorFormChange((current) => ({ ...current, eventEndTime: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="schedule-toggle secondary">
+                        <input
+                          type="checkbox"
+                          checked={noteEditorForm.eventEnabled}
+                          onChange={(event) =>
+                            onNoteEditorFormChange((current) => ({ ...current, eventEnabled: event.target.checked }))
+                          }
+                        />
+                        <span>Показывать в календаре</span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="empty-copy">Эта заметка пока не привязана к дате и времени.</div>
+                  )}
+                </div>
+
                 <div className="tag-section">
                   <div className="side-title">Теги</div>
                   <div className="tag-list">
@@ -73,6 +136,9 @@ export default function NotesSection({
                     disabled={loading}
                   >
                     Удалить заметку
+                  </button>
+                  <button className="secondary-button" type="button" onClick={onOpenDuplicateDialog} disabled={loading}>
+                    Дублировать
                   </button>
                 </div>
               </form>
@@ -110,7 +176,7 @@ export default function NotesSection({
               <input
                 value={noteForm.header}
                 onChange={(event) => onNoteFormChange((current) => ({ ...current, header: event.target.value }))}
-                placeholder="Имя заметки"
+                placeholder="Название заметки"
               />
               <textarea
                 rows={8}
@@ -131,7 +197,15 @@ export default function NotesSection({
         </div>
         <aside className="detail-column notes-column">
           <div className="notes-side-header">
-            <div className="panel-title">Заметки</div>
+            <div>
+              <div className="panel-title">Заметки</div>
+              {selectedCategory && (
+                <div className="category-context">
+                  <span className="category-context-marker" style={{ backgroundColor: selectedCategory.color || "#9db8ff" }} />
+                  <span>{selectedCategory.name}</span>
+                </div>
+              )}
+            </div>
             <button className="secondary-button" type="button" onClick={() => onSelectNote("")}>
               Новая
             </button>
@@ -156,8 +230,14 @@ export default function NotesSection({
                     удалить
                   </button>
                 </div>
+                {note.event?.start_at && (
+                  <div className="note-preview-meta">
+                    {formatScheduledAt(note.event.start_at)}
+                    {note.event.enabled === false ? " • скрыта из календаря" : ""}
+                  </div>
+                )}
                 <div className="note-preview-line" />
-                <p>{note.short_body || note.body}</p>
+                <p>{note.short_body || note.body || "Без описания"}</p>
               </article>
             ))}
             {!notes.length && <div className="empty-copy">Для выбранной категории заметок пока нет.</div>}
@@ -179,4 +259,25 @@ function formatSize(size) {
     return `${(size / 1024).toFixed(1)} KB`;
   }
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatUpdatedAt(unixSeconds) {
+  if (!unixSeconds) {
+    return "Без даты";
+  }
+
+  return `Обновлено ${new Date(unixSeconds * 1000).toLocaleDateString("ru-RU")}`;
+}
+
+function formatScheduledAt(unixSeconds) {
+  if (!unixSeconds) {
+    return "";
+  }
+
+  return new Date(unixSeconds * 1000).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

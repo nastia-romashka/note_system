@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -13,17 +14,19 @@ import (
 )
 
 const (
-	notesURL = "/api/notes"
-	noteURL  = "/api/notes/:uuid"
-	statsURL = "/api/stats"
+	notesURL    = "/api/notes"
+	noteURL     = "/api/notes/:uuid"
+	statsURL    = "/api/stats"
+	calendarURL = "/api/calendar"
 )
 
 type NoteService interface {
 	GetOne(noteUUID, userUUID string) (Note, error)
 	GetByCategoryUUID(categoryUUID, userUUID string) ([]Note, error)
+	GetByEventRange(from, to int64, userUUID string) ([]Note, error)
 	GetStats(userUUID string) (NoteStats, error)
 	Create(dto CreateNoteDTO) (string, error)
-	Update(noteUUID, userUUID string, dto UpdateNoteDTO, tagsUpdate bool) error
+	Update(noteUUID, userUUID string, dto UpdateNoteDTO, headerUpdate, bodyUpdate, categoryUpdate, tagsUpdate, eventUpdate bool) error
 	Delete(noteUUID, userUUID string) error
 }
 
@@ -34,11 +37,44 @@ type Handler struct {
 
 func (h *Handler) Register(router *httprouter.Router) {
 	router.HandlerFunc(http.MethodGet, notesURL, apperror.Middleware(h.GetNotesByCategory))
+	router.HandlerFunc(http.MethodGet, calendarURL, apperror.Middleware(h.GetCalendarNotes))
 	router.HandlerFunc(http.MethodPost, notesURL, apperror.Middleware(h.CreateNote))
 	router.HandlerFunc(http.MethodGet, noteURL, apperror.Middleware(h.GetNote))
 	router.HandlerFunc(http.MethodPatch, noteURL, apperror.Middleware(h.PartiallyUpdateNote))
 	router.HandlerFunc(http.MethodDelete, noteURL, apperror.Middleware(h.DeleteNote))
 	router.HandlerFunc(http.MethodGet, statsURL, apperror.Middleware(h.GetStats))
+}
+
+func (h *Handler) GetCalendarNotes(w http.ResponseWriter, r *http.Request) error {
+	userUUID, err := userUUIDFromQuery(r)
+	if err != nil {
+		return err
+	}
+
+	from, err := parseUnixQuery(r, "from")
+	if err != nil {
+		return err
+	}
+	to, err := parseUnixQuery(r, "to")
+	if err != nil {
+		return err
+	}
+
+	notes, err := h.NoteService.GetByEventRange(from, to, userUUID)
+	if err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(notes)
+	if err != nil {
+		h.Logger.Error("failed to marshal calendar notes response", "user_uuid", userUUID, "error", err)
+		return fmt.Errorf("marshal calendar notes: %w", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+	return nil
 }
 
 func (h *Handler) GetNote(w http.ResponseWriter, r *http.Request) error {
@@ -162,17 +198,28 @@ func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) er
 		return apperror.BadRequestError("can't decode")
 	}
 
-	tagsUpdate := len(dto.Tags) > 0
-	if len(dto.Tags) == 0 {
-		var rawBody map[string]any
-		if err = json.Unmarshal(bodyBytes, &rawBody); err != nil {
-			h.Logger.Warn("failed to decode patch note raw payload", "note_uuid", noteUUID, "error", err)
-			return apperror.BadRequestError("can't decode")
-		}
-		_, tagsUpdate = rawBody["tags"]
+	var rawBody map[string]json.RawMessage
+	if err = json.Unmarshal(bodyBytes, &rawBody); err != nil {
+		h.Logger.Warn("failed to decode patch note raw payload", "note_uuid", noteUUID, "error", err)
+		return apperror.BadRequestError("can't decode")
 	}
 
-	if err = h.NoteService.Update(noteUUID, userUUID, dto, tagsUpdate); err != nil {
+	tagsUpdate := hasJSONField(rawBody, "tags")
+	eventUpdate := hasJSONField(rawBody, "event")
+	headerUpdate := hasJSONField(rawBody, "header")
+	bodyUpdate := hasJSONField(rawBody, "body")
+	categoryUpdate := hasJSONField(rawBody, "category_uuid")
+
+	if err = h.NoteService.Update(
+		noteUUID,
+		userUUID,
+		dto,
+		headerUpdate,
+		bodyUpdate,
+		categoryUpdate,
+		tagsUpdate,
+		eventUpdate,
+	); err != nil {
 		return err
 	}
 
@@ -206,4 +253,23 @@ func userUUIDFromQuery(r *http.Request) (string, error) {
 	}
 
 	return userUUID, nil
+}
+
+func parseUnixQuery(r *http.Request, key string) (int64, error) {
+	rawValue := r.URL.Query().Get(key)
+	if rawValue == "" {
+		return 0, apperror.BadRequestError(key + " is required")
+	}
+
+	value, err := strconv.ParseInt(rawValue, 10, 64)
+	if err != nil {
+		return 0, apperror.BadRequestError("invalid " + key)
+	}
+
+	return value, nil
+}
+
+func hasJSONField(payload map[string]json.RawMessage, key string) bool {
+	_, ok := payload[key]
+	return ok
 }

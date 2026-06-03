@@ -1,0 +1,9 @@
+is_debug: true
+typesense:
+  url: http://localhost:8108
+  api_key: local-typesense-api-key
+  collection: notes
+listen:
+  type: port
+  bind_ip: localhost
+  port: 8086

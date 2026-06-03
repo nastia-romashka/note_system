@@ -2,8 +2,10 @@ from abc import ABC, abstractmethod
 
 from dao.model.dto import (
     CreateCategoryDTO,
+    CreateUserGraphLinkDTO,
     CreateGraphNoteDTO,
     DeleteCategoryDTO,
+    DeleteUserGraphLinkDTO,
     UpdateCategoryDTO,
     UpdateGraphNoteDTO,
 )
@@ -73,4 +75,12 @@ class CategoryDAO(ABC):
 
     @abstractmethod
     def unlink_notes(self, source_note_uuid: str, target_note_uuid: str, user_uuid: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_user_graph_link(self, link: CreateUserGraphLinkDTO) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_user_graph_link(self, link: DeleteUserGraphLinkDTO) -> None:
         raise NotImplementedError

@@ -24,6 +24,7 @@ const (
 type UserService interface {
 	GetOne(userUUID string) (User, error)
 	GetProfile(userUUID string) (UserProfile, error)
+	UpdateProfile(userUUID string, dto UpdateUserProfileDTO) error
 	Create(dto CreateUserDTO) (string, error)
 	Authenticate(dto AuthUserDTO) (User, error)
 	CreateAction(userUUID string, dto CreateUserActionDTO) error
@@ -39,6 +40,7 @@ func (h *Handler) Register(router *httprouter.Router) {
 	router.HandlerFunc(http.MethodPost, usersURL, apperror.Middleware(h.CreateUser))
 	router.HandlerFunc(http.MethodGet, userURL, apperror.Middleware(h.GetUser))
 	router.HandlerFunc(http.MethodGet, userProfileURL, apperror.Middleware(h.GetUserProfile))
+	router.HandlerFunc(http.MethodPatch, userProfileURL, apperror.Middleware(h.UpdateUserProfile))
 	router.HandlerFunc(http.MethodGet, userActionsURL, apperror.Middleware(h.GetUserActions))
 	router.HandlerFunc(http.MethodPost, createActionURL, apperror.Middleware(h.CreateUserAction))
 	router.HandlerFunc(http.MethodPost, authenticateURL, apperror.Middleware(h.Authenticate))
@@ -107,6 +109,28 @@ func (h *Handler) GetUserProfile(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+	return nil
+}
+
+func (h *Handler) UpdateUserProfile(w http.ResponseWriter, r *http.Request) error {
+	userUUID := userUUIDFromParams(r)
+	if userUUID == "" {
+		return apperror.BadRequestError("empty user uuid")
+	}
+
+	var dto UpdateUserProfileDTO
+	defer r.Body.Close()
+
+	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+		h.Logger.Warn("failed to decode update user profile payload", "error", err)
+		return apperror.BadRequestError("can't decode")
+	}
+
+	if err := h.UserService.UpdateProfile(userUUID, dto); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 

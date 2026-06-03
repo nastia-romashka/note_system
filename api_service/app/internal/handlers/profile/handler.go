@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -32,8 +33,9 @@ type Handler struct {
 }
 
 type Summary struct {
-	Profile userclient.UserProfile `json:"profile"`
-	Stats   SummaryStats           `json:"stats"`
+	Profile        userclient.UserProfile `json:"profile"`
+	Stats          SummaryStats           `json:"stats"`
+	UpcomingEvents []noteclient.Note      `json:"upcoming_events"`
 }
 
 type SummaryStats struct {
@@ -46,6 +48,7 @@ type SummaryStats struct {
 
 func (h *Handler) Register(router *httprouter.Router) {
 	router.HandlerFunc(http.MethodGet, meURL, jwt.JWTMiddleware(apperror.Middleware(h.GetProfile)))
+	router.HandlerFunc(http.MethodPatch, meURL, jwt.JWTMiddleware(apperror.Middleware(h.UpdateProfile)))
 	router.HandlerFunc(http.MethodGet, meActionsURL, jwt.JWTMiddleware(apperror.Middleware(h.GetActions)))
 	router.HandlerFunc(http.MethodGet, meSummaryURL, jwt.JWTMiddleware(apperror.Middleware(h.GetSummary)))
 }
@@ -70,6 +73,45 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+	return nil
+}
+
+func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) error {
+	userUUID, err := h.userUUIDFromContext(r)
+	if err != nil {
+		return err
+	}
+
+	var dto userclient.UpdateUserProfileDTO
+	defer r.Body.Close()
+
+	if err = json.NewDecoder(r.Body).Decode(&dto); err != nil {
+		return apperror.BadRequestError("can't decode")
+	}
+
+	if err = h.UserService.UpdateProfile(r.Context(), userUUID, dto); err != nil {
+		return err
+	}
+
+	metadata := map[string]any{}
+	if dto.Username != "" {
+		metadata["username"] = dto.Username
+	}
+	if dto.Email != "" {
+		metadata["email"] = dto.Email
+	}
+	if dto.NewPassword != "" {
+		metadata["password_changed"] = true
+	}
+	_ = h.UserService.CreateAction(r.Context(), userUUID, userclient.CreateUserActionDTO{
+		Action:     "profile.updated",
+		EntityType: "user",
+		EntityId:   userUUID,
+		Status:     "success",
+		Metadata:   metadata,
+	})
+
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 
@@ -99,6 +141,11 @@ func (h *Handler) GetSummary(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	upcomingEvents, err := h.fetchUpcomingEvents(r, userUUID)
+	if err != nil {
+		return err
+	}
+
 	lastActions, err := h.UserService.GetActions(r.Context(), userUUID, 1, 0)
 	if err != nil {
 		return err
@@ -119,6 +166,7 @@ func (h *Handler) GetSummary(w http.ResponseWriter, r *http.Request) error {
 			FilesCount:      fileStats.FilesCount,
 			LastActivityAt:  lastActivityAt,
 		},
+		UpcomingEvents: upcomingEvents,
 	}
 
 	data, err := json.Marshal(summary)
@@ -131,6 +179,27 @@ func (h *Handler) GetSummary(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
 	return nil
+}
+
+func (h *Handler) fetchUpcomingEvents(r *http.Request, userUUID string) ([]noteclient.Note, error) {
+	now := time.Now().Unix()
+	const upcomingWindow = int64(30 * 24 * 60 * 60)
+
+	notesData, err := h.NoteService.GetCalendarNotes(r.Context(), now, now+upcomingWindow, userUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	var notes []noteclient.Note
+	if err = json.Unmarshal(notesData, &notes); err != nil {
+		return nil, fmt.Errorf("decode upcoming events: %w", err)
+	}
+
+	if len(notes) > 5 {
+		notes = notes[:5]
+	}
+
+	return notes, nil
 }
 
 func (h *Handler) GetActions(w http.ResponseWriter, r *http.Request) error {

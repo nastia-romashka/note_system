@@ -13,7 +13,10 @@ import (
 	"myproject/pkg/middleware/jwt"
 )
 
-const graphURL = "/api/graph"
+const (
+	graphURL      = "/api/graph"
+	graphLinksURL = "/api/graph/links"
+)
 
 type Handler struct {
 	Logger          logging.Logger
@@ -22,6 +25,8 @@ type Handler struct {
 
 func (h *Handler) Register(router *httprouter.Router) {
 	router.HandlerFunc(http.MethodGet, graphURL, jwt.JWTMiddleware(apperror.Middleware(h.GetGraph)))
+	router.HandlerFunc(http.MethodPost, graphLinksURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateUserGraphLink)))
+	router.HandlerFunc(http.MethodDelete, graphLinksURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteUserGraphLink)))
 }
 
 func (h *Handler) GetGraph(w http.ResponseWriter, r *http.Request) error {
@@ -44,6 +49,56 @@ func (h *Handler) GetGraph(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+	return nil
+}
+
+func (h *Handler) CreateUserGraphLink(w http.ResponseWriter, r *http.Request) error {
+	userUuid, err := h.userUUIDFromContext(r)
+	if err != nil {
+		return err
+	}
+
+	var dto categoryclient.UserGraphLinkDTO
+	defer r.Body.Close()
+	if err = json.NewDecoder(r.Body).Decode(&dto); err != nil {
+		return apperror.BadRequestError("can't decode")
+	}
+
+	dto.UserUuid = userUuid
+	if dto.SourceID == "" || dto.TargetID == "" {
+		return apperror.BadRequestError("source_id and target_id are required")
+	}
+
+	if err = h.CategoryService.CreateUserGraphLink(r.Context(), dto); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (h *Handler) DeleteUserGraphLink(w http.ResponseWriter, r *http.Request) error {
+	userUuid, err := h.userUUIDFromContext(r)
+	if err != nil {
+		return err
+	}
+
+	var dto categoryclient.UserGraphLinkDTO
+	defer r.Body.Close()
+	if err = json.NewDecoder(r.Body).Decode(&dto); err != nil {
+		return apperror.BadRequestError("can't decode")
+	}
+
+	dto.UserUuid = userUuid
+	if dto.SourceID == "" || dto.TargetID == "" {
+		return apperror.BadRequestError("source_id and target_id are required")
+	}
+
+	if err = h.CategoryService.DeleteUserGraphLink(r.Context(), dto); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 

@@ -187,6 +187,38 @@ func (s *Storage) FindByUsername(username string) (user handlermodel.User, err e
 	return s.findOne(findUserByUsernameQuery, username)
 }
 
+func (s *Storage) UpdateProfile(userUUID, username, email, passwordHash string) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `
+		UPDATE users
+		SET
+			username = $2,
+			email = $3,
+			password_hash = CASE WHEN $4 <> '' THEN $4 ELSE password_hash END,
+			updated_at = now()
+		WHERE id = $1 AND is_active = true
+	`
+
+	result, err := s.pool.Exec(ctx, query, userUUID, username, email, passwordHash)
+	if err != nil {
+		if isPostgresCode(err, "22P02") {
+			return apperror.BadRequestError("invalid user uuid")
+		}
+		if isPostgresCode(err, "23505") {
+			return apperror.BadRequestError("username or email already exists")
+		}
+		return fmt.Errorf("update user profile: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return apperror.NotFoundError("user not found")
+	}
+
+	return nil
+}
+
 func (s *Storage) UpdateLastLogin(userUUID string) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

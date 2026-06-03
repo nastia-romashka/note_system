@@ -14,7 +14,8 @@ import "@xyflow/react/dist/style.css";
 
 const NODE_WIDTH = 220;
 const CATEGORY_X = 40;
-const NOTE_X = 390;
+const CATEGORY_DEPTH_GAP = 280;
+const NOTE_GAP_X = 350;
 const ROW_GAP = 130;
 
 const nodeTypes = {
@@ -24,10 +25,12 @@ const nodeTypes = {
 export default function GraphPage({
   graph,
   loading,
-  onRefresh,
+  onCreateGraphLink,
+  onDeleteGraphLink,
   onBackToNotes,
+  onOpenCalendar,
+  onOpenGraphNode,
   onOpenProfile,
-  onLogout,
 }) {
   const preparedGraph = useMemo(() => toFlowGraph(graph), [graph]);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -38,26 +41,43 @@ export default function GraphPage({
     setEdges(preparedGraph.edges);
   }, [preparedGraph, setEdges, setNodes]);
 
+  function handleNodeClick(_, node) {
+    onOpenGraphNode?.(node.data);
+  }
+
+  function handleEdgeClick(event, edge) {
+    if (edge?.data?.isUserLink) {
+      event.preventDefault();
+      void onDeleteGraphLink?.(edge.source, edge.target);
+    }
+  }
+
+  function handleConnect(connection) {
+    const sourceId = connection?.source;
+    const targetId = connection?.target;
+    if (!sourceId || !targetId || sourceId === targetId) {
+      return;
+    }
+
+    void onCreateGraphLink?.(sourceId, targetId);
+  }
+
   return (
     <main className="graph-page">
       <header className="graph-header">
         <div>
-          <span className="eyebrow">Граф заметок</span>
-          <h1>Категории и заметки</h1>
-          <p>Первый слой визуализации: категории, заметки и связи между ними. Узлы можно перетаскивать мышкой.</p>
+          <span className="eyebrow">Связанная база знаний</span>
+          <h1>Граф</h1>
         </div>
         <div className="graph-actions">
           <button className="secondary-button" type="button" onClick={onBackToNotes}>
             К заметкам
           </button>
+          <button className="secondary-button" type="button" onClick={onOpenCalendar}>
+            Календарь
+          </button>
           <button className="secondary-button" type="button" onClick={onOpenProfile}>
             Личный кабинет
-          </button>
-          <button className="secondary-button" type="button" onClick={onRefresh} disabled={loading}>
-            Обновить
-          </button>
-          <button className="secondary-button" type="button" onClick={onLogout}>
-            Выйти
           </button>
         </div>
       </header>
@@ -67,7 +87,7 @@ export default function GraphPage({
         {!loading && nodes.length === 0 && (
           <div className="graph-empty">
             <h2>Граф пока пустой</h2>
-            <p>Создай категории и заметки, после этого они появятся здесь как узлы графа.</p>
+            <p>Создайте категории и заметки, после этого они появятся здесь как узлы графа.</p>
           </div>
         )}
 
@@ -77,10 +97,13 @@ export default function GraphPage({
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onEdgeClick={handleEdgeClick}
+          onConnect={handleConnect}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           nodesDraggable
-          nodesConnectable={false}
+          nodesConnectable
           elementsSelectable
         >
           <Background color="#b8c2d8" gap={24} size={1} />
@@ -111,17 +134,19 @@ function toFlowGraph(graph) {
 
   const categories = graphNodes.filter((node) => node.type === "category");
   const notes = graphNodes.filter((node) => node.type === "note");
-  const categoryPositions = new Map();
+  const categoryEdges = graphEdges.filter((edge) => edge.type === "CHILD");
+  const noteEdges = graphEdges.filter((edge) => edge.type !== "CHILD");
 
-  const flowCategoryNodes = categories.map((category, index) => {
-    const position = {
-      x: CATEGORY_X,
-      y: index * ROW_GAP,
-    };
-    categoryPositions.set(category.id, position);
-
-    return toFlowNode(category, position);
-  });
+  const categoryPositions = buildCategoryPositions(categories, categoryEdges);
+  const flowCategoryNodes = categories.map((category) =>
+    toFlowNode(
+      category,
+      categoryPositions.get(category.id) || {
+        x: CATEGORY_X,
+        y: 0,
+      },
+    ),
+  );
 
   const notesByCategory = new Map();
   notes.forEach((note) => {
@@ -133,28 +158,36 @@ function toFlowGraph(graph) {
 
   const flowNoteNodes = notes.map((note, index) => {
     const siblings = notesByCategory.get(note.category_uuid || "without-category") || [];
-    const siblingIndex = Math.max(siblings.findIndex((item) => item.id === note.id), 0);
+    const siblingIndex = Math.max(
+      siblings.findIndex((item) => item.id === note.id),
+      0,
+    );
     const categoryPosition = categoryPositions.get(note.category_uuid);
 
     return toFlowNode(note, {
-      x: NOTE_X + Math.floor(siblingIndex / 4) * (NODE_WIDTH + 80),
+      x: categoryPosition
+        ? categoryPosition.x + NOTE_GAP_X + Math.floor(siblingIndex / 4) * (NODE_WIDTH + 80)
+        : CATEGORY_X + NOTE_GAP_X,
       y: categoryPosition ? categoryPosition.y + siblingIndex * 88 : index * 100,
     });
   });
 
   const knownNodeIds = new Set([...flowCategoryNodes, ...flowNoteNodes].map((node) => node.id));
-  const flowEdges = graphEdges
+  const flowEdges = [...categoryEdges, ...noteEdges]
     .filter((edge) => knownNodeIds.has(edge.source) && knownNodeIds.has(edge.target))
     .map((edge, index) => ({
       id: `${edge.type}-${edge.source}-${edge.target}-${index}`,
       source: edge.source,
       target: edge.target,
-      label: edge.type === "HAS_NOTE" ? "содержит" : "связана",
       type: "smoothstep",
       markerEnd: {
         type: MarkerType.ArrowClosed,
       },
-      className: edge.type === "LINKED_TO" ? "graph-edge-link" : "graph-edge-category",
+      className: resolveEdgeClassName(edge.type),
+      data: {
+        isUserLink: edge.type === "USER_LINK",
+      },
+      style: resolveEdgeStyle(edge.type),
     }));
 
   return {
@@ -163,16 +196,91 @@ function toFlowGraph(graph) {
   };
 }
 
+function buildCategoryPositions(categories, categoryEdges) {
+  const categoryById = new Map(categories.map((category) => [category.id, category]));
+  const childrenByParent = new Map();
+  const incomingCount = new Map(categories.map((category) => [category.id, 0]));
+
+  categoryEdges.forEach((edge) => {
+    const children = childrenByParent.get(edge.source) || [];
+    children.push(edge.target);
+    childrenByParent.set(edge.source, children);
+    incomingCount.set(edge.target, (incomingCount.get(edge.target) || 0) + 1);
+  });
+
+  const roots = categories
+    .filter((category) => (incomingCount.get(category.id) || 0) === 0)
+    .sort((left, right) => String(left.label || "").localeCompare(String(right.label || ""), "ru"));
+
+  const positions = new Map();
+  let rowIndex = 0;
+
+  const visit = (categoryId, depth) => {
+    if (positions.has(categoryId)) {
+      return;
+    }
+
+    positions.set(categoryId, {
+      x: CATEGORY_X + depth * CATEGORY_DEPTH_GAP,
+      y: rowIndex * ROW_GAP,
+    });
+    rowIndex += 1;
+
+    const childIds = (childrenByParent.get(categoryId) || [])
+      .filter((childId) => categoryById.has(childId))
+      .sort((left, right) =>
+        String(categoryById.get(left)?.label || "").localeCompare(
+          String(categoryById.get(right)?.label || ""),
+          "ru",
+        ),
+      );
+
+    childIds.forEach((childId) => visit(childId, depth + 1));
+  };
+
+  roots.forEach((category) => visit(category.id, 0));
+  categories.forEach((category) => visit(category.id, 0));
+
+  return positions;
+}
+
 function toFlowNode(node, position) {
   return {
     id: node.id,
     type: "graphNode",
     position,
     data: {
+      nodeId: node.id,
       type: node.type,
       label: node.label,
       color: node.color,
       category_uuid: node.category_uuid,
     },
+  };
+}
+
+function resolveEdgeClassName(type) {
+  if (type === "USER_LINK") {
+    return "graph-edge-user";
+  }
+  if (type === "LINKED_TO") {
+    return "graph-edge-link";
+  }
+  return "graph-edge-category";
+}
+
+function resolveEdgeStyle(type) {
+  if (type === "USER_LINK") {
+    return {
+      strokeWidth: 2.4,
+    };
+  }
+  if (type === "LINKED_TO") {
+    return {
+      strokeWidth: 2.2,
+    };
+  }
+  return {
+    strokeWidth: 2.4,
   };
 }

@@ -49,6 +49,70 @@ func (s *service) GetProfile(userUUID string) (profile handlermodel.UserProfile,
 	return profile, nil
 }
 
+func (s *service) UpdateProfile(userUUID string, dto handlermodel.UpdateUserProfileDTO) (err error) {
+	userUUID = strings.TrimSpace(userUUID)
+	dto.Username = strings.TrimSpace(dto.Username)
+	dto.Email = strings.TrimSpace(strings.ToLower(dto.Email))
+	dto.CurrentPassword = strings.TrimSpace(dto.CurrentPassword)
+	dto.NewPassword = strings.TrimSpace(dto.NewPassword)
+
+	if userUUID == "" {
+		return apperror.BadRequestError("user_uuid is required")
+	}
+	if dto.Username == "" && dto.Email == "" && dto.NewPassword == "" {
+		return apperror.BadRequestError("empty update payload")
+	}
+	if dto.NewPassword != "" && dto.CurrentPassword == "" {
+		return apperror.BadRequestError("current password is required")
+	}
+
+	user, err := s.storage.FindOne(userUUID)
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			return err
+		}
+		return fmt.Errorf("find user for profile update: %w", err)
+	}
+
+	username := user.Username
+	email := user.Email
+	passwordHash := ""
+
+	if dto.Username != "" {
+		username = dto.Username
+	}
+	if dto.Email != "" {
+		email = dto.Email
+	}
+	if username == "" {
+		return apperror.BadRequestError("username is required")
+	}
+	if email == "" {
+		return apperror.BadRequestError("email is required")
+	}
+
+	if dto.NewPassword != "" {
+		if err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(dto.CurrentPassword)); err != nil {
+			return apperror.BadRequestError("current password is invalid")
+		}
+
+		passwordHashBytes, hashErr := bcrypt.GenerateFromPassword([]byte(dto.NewPassword), bcrypt.DefaultCost)
+		if hashErr != nil {
+			return fmt.Errorf("hash new password: %w", hashErr)
+		}
+		passwordHash = string(passwordHashBytes)
+	}
+
+	if err = s.storage.UpdateProfile(userUUID, username, email, passwordHash); err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			return err
+		}
+		return fmt.Errorf("update user profile: %w", err)
+	}
+
+	return nil
+}
+
 func (s *service) Create(dto handlermodel.CreateUserDTO) (userUUID string, err error) {
 	dto.Username = strings.TrimSpace(dto.Username)
 	dto.Email = strings.TrimSpace(strings.ToLower(dto.Email))

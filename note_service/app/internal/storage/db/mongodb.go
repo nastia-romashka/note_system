@@ -18,6 +18,7 @@ import (
 	"note_service/internal/config"
 	handlermodel "note_service/internal/handlers/notes"
 	tagmodel "note_service/internal/handlers/tags"
+	"note_service/internal/storage"
 	"note_service/pkg/logging"
 )
 
@@ -34,8 +35,16 @@ type mongoNote struct {
 	Body         string             `bson:"body,omitempty"`
 	ShortBody    string             `bson:"short_body,omitempty"`
 	CreatedDate  int64              `bson:"created_date,omitempty"`
+	UpdatedAt    int64              `bson:"updated_at,omitempty"`
 	CategoryUuid string             `bson:"category_uuid,omitempty"`
 	Tags         []string           `bson:"tags,omitempty"`
+	Event        *mongoNoteEvent    `bson:"event,omitempty"`
+}
+
+type mongoNoteEvent struct {
+	Enabled bool  `bson:"enabled"`
+	StartAt int64 `bson:"start_at,omitempty"`
+	EndAt   int64 `bson:"end_at,omitempty"`
 }
 
 type mongoTag struct {
@@ -93,6 +102,53 @@ func NewStorage(cfg *config.Config) (storage *Storage, err error) {
 	if err != nil {
 		logger.Error("failed to create tag name index", "error", err)
 		return nil, fmt.Errorf("create tag name index: %w", err)
+	}
+
+	_, err = storage.noteCollection.Indexes().CreateOne(
+		ctx,
+		mongo.IndexModel{
+			Keys: bson.D{
+				{Key: "user_uuid", Value: 1},
+				{Key: "category_uuid", Value: 1},
+				{Key: "created_date", Value: -1},
+			},
+			Options: options.Index().SetName("user_uuid_1_category_uuid_1_created_date_-1"),
+		},
+	)
+	if err != nil {
+		logger.Error("failed to create note category index", "error", err)
+		return nil, fmt.Errorf("create note category index: %w", err)
+	}
+
+	_, err = storage.noteCollection.Indexes().CreateOne(
+		ctx,
+		mongo.IndexModel{
+			Keys: bson.D{
+				{Key: "user_uuid", Value: 1},
+				{Key: "event.enabled", Value: 1},
+				{Key: "event.start_at", Value: 1},
+			},
+			Options: options.Index().SetName("user_uuid_1_event.enabled_1_event.start_at_1"),
+		},
+	)
+	if err != nil {
+		logger.Error("failed to create note calendar index", "error", err)
+		return nil, fmt.Errorf("create note calendar index: %w", err)
+	}
+
+	_, err = storage.noteCollection.Indexes().CreateOne(
+		ctx,
+		mongo.IndexModel{
+			Keys: bson.D{
+				{Key: "user_uuid", Value: 1},
+				{Key: "updated_at", Value: -1},
+			},
+			Options: options.Index().SetName("user_uuid_1_updated_at_-1"),
+		},
+	)
+	if err != nil {
+		logger.Error("failed to create note updated_at index", "error", err)
+		return nil, fmt.Errorf("create note updated_at index: %w", err)
 	}
 
 	if err = storage.Ping(); err != nil {
@@ -165,8 +221,10 @@ func (s *Storage) FindOne(noteUUID, userUUID string) (note handlermodel.Note, er
 		Header:       rawNote.Header,
 		Body:         rawNote.Body,
 		CreatedDate:  rawNote.CreatedDate,
+		UpdatedAt:    rawNote.UpdatedAt,
 		CategoryUuid: rawNote.CategoryUuid,
 		Tags:         rawNote.Tags,
+		Event:        toHandlerEvent(rawNote.Event),
 	}
 
 	return note, nil
@@ -201,13 +259,61 @@ func (s *Storage) FindByCategoryUUID(categoryUUID, userUUID string) (notes []han
 			Body:         rawNote.Body,
 			ShortBody:    rawNote.ShortBody,
 			CreatedDate:  rawNote.CreatedDate,
+			UpdatedAt:    rawNote.UpdatedAt,
 			CategoryUuid: rawNote.CategoryUuid,
 			Tags:         rawNote.Tags,
+			Event:        toHandlerEvent(rawNote.Event),
 		})
 	}
 
 	if err = cursor.Err(); err != nil {
 		return nil, fmt.Errorf("cursor notes by category: %w", err)
+	}
+
+	return notes, nil
+}
+
+func (s *Storage) FindByEventRange(from, to int64, userUUID string) (notes []handlermodel.Note, err error) {
+	notes = make([]handlermodel.Note, 0)
+
+	filter := bson.M{
+		"user_uuid":      userUUID,
+		"event.enabled":  true,
+		"event.start_at": bson.M{"$gte": from, "$lte": to},
+	}
+	findOptions := options.Find().SetSort(bson.D{{Key: "event.start_at", Value: 1}, {Key: "_id", Value: 1}})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cursor, err := s.noteCollection.Find(ctx, filter, findOptions)
+	if err != nil {
+		return nil, fmt.Errorf("find notes by event range: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var rawNote mongoNote
+		if err = cursor.Decode(&rawNote); err != nil {
+			return nil, fmt.Errorf("decode calendar note item: %w", err)
+		}
+
+		notes = append(notes, handlermodel.Note{
+			Uuid:         rawNote.ID.Hex(),
+			UserUuid:     rawNote.UserUuid,
+			Header:       rawNote.Header,
+			Body:         rawNote.Body,
+			ShortBody:    rawNote.ShortBody,
+			CreatedDate:  rawNote.CreatedDate,
+			UpdatedAt:    rawNote.UpdatedAt,
+			CategoryUuid: rawNote.CategoryUuid,
+			Tags:         rawNote.Tags,
+			Event:        toHandlerEvent(rawNote.Event),
+		})
+	}
+
+	if err = cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor notes by event range: %w", err)
 	}
 
 	return notes, nil
@@ -230,7 +336,7 @@ func (s *Storage) CountStats(userUUID string) (stats handlermodel.NoteStats, err
 	return stats, nil
 }
 
-func (s *Storage) Update(noteUUID, userUUID string, note handlermodel.Note, tagsUpdate bool) (err error) {
+func (s *Storage) Update(noteUUID, userUUID string, note handlermodel.Note, opts storage.UpdateOptions) (err error) {
 	objectID, err := primitive.ObjectIDFromHex(noteUUID)
 	if err != nil {
 		return apperror.BadRequestError("invalid note uuid")
@@ -250,24 +356,47 @@ func (s *Storage) Update(noteUUID, userUUID string, note handlermodel.Note, tags
 	delete(updateBody, "uuid")
 	delete(updateBody, "user_uuid")
 	delete(updateBody, "created_date")
+	delete(updateBody, "updated_at")
 
-	if note.Body == "" {
+	if !opts.Body {
 		delete(updateBody, "body")
 		delete(updateBody, "short_body")
+	} else {
+		updateBody["body"] = note.Body
+		updateBody["short_body"] = note.ShortBody
 	}
-	if note.Header == "" {
+	if !opts.Header {
 		delete(updateBody, "header")
+	} else {
+		updateBody["header"] = note.Header
 	}
-	if note.CategoryUuid == "" {
+	if !opts.Category {
 		delete(updateBody, "category_uuid")
+	} else {
+		updateBody["category_uuid"] = note.CategoryUuid
 	}
-	if !tagsUpdate {
+	if !opts.Tags {
 		delete(updateBody, "tags")
+	} else {
+		updateBody["tags"] = note.Tags
 	}
+	if !opts.Event {
+		delete(updateBody, "event")
+	}
+	updateBody["updated_at"] = note.UpdatedAt
 
 	update := bson.M{"$set": updateBody}
-	if tagsUpdate {
-		updateBody["tags"] = note.Tags
+	if opts.Event {
+		if note.Event != nil {
+			updateBody["event"] = bson.M{
+				"enabled":  note.Event.Enabled,
+				"start_at": note.Event.StartAt,
+				"end_at":   note.Event.EndAt,
+			}
+		} else {
+			update["$unset"] = bson.M{"event": ""}
+			delete(updateBody, "event")
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -284,6 +413,18 @@ func (s *Storage) Update(noteUUID, userUUID string, note handlermodel.Note, tags
 	}
 
 	return nil
+}
+
+func toHandlerEvent(event *mongoNoteEvent) *handlermodel.NoteEvent {
+	if event == nil {
+		return nil
+	}
+
+	return &handlermodel.NoteEvent{
+		Enabled: event.Enabled,
+		StartAt: event.StartAt,
+		EndAt:   event.EndAt,
+	}
 }
 
 func (s *Storage) Delete(noteUUID, userUUID string) (err error) {

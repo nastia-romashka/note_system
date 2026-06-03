@@ -44,6 +44,8 @@ type CategoryService interface {
 	DeleteNoteNode(ctx context.Context, noteUuid, userUuid string) error
 	LinkNotes(ctx context.Context, sourceNoteUuid, targetNoteUuid, userUuid string) error
 	UnlinkNotes(ctx context.Context, sourceNoteUuid, targetNoteUuid, userUuid string) error
+	CreateUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error
+	DeleteUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error
 }
 
 func (c *client) GetUserCategories(ctx context.Context, userUuid string) ([]byte, error) {
@@ -71,7 +73,7 @@ func (c *client) GetUserCategories(ctx context.Context, userUuid string) ([]byte
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -112,7 +114,7 @@ func (c *client) GetStats(ctx context.Context, userUuid string) (stats CategoryS
 		return stats, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -156,7 +158,7 @@ func (c *client) GetGraph(ctx context.Context, userUuid string) (graph GraphData
 		return graph, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -206,7 +208,7 @@ func (c *client) CreateCategory(ctx context.Context, dto CreateCategoryDTO) (str
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -255,7 +257,7 @@ func (c *client) UpdateCategory(ctx context.Context, uuid string, dto UpdateCate
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -295,7 +297,7 @@ func (c *client) DeleteCategory(ctx context.Context, dto DeleteCategoryDTO) erro
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -345,6 +347,14 @@ func (c *client) UnlinkNotes(ctx context.Context, sourceNoteUuid, targetNoteUuid
 		fmt.Sprintf("graph/notes/%s/links/%s", sourceNoteUuid, targetNoteUuid),
 		LinkGraphNotesDTO{UserUuid: userUuid},
 	)
+}
+
+func (c *client) CreateUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error {
+	return c.sendGraphJSON(ctx, http.MethodPost, "graph/links", dto)
+}
+
+func (c *client) DeleteUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error {
+	return c.sendGraphJSON(ctx, http.MethodDelete, "graph/links", dto)
 }
 
 func (c *client) sendGraphJSON(ctx context.Context, method, resource string, dto any) error {

@@ -15,3 +15,5 @@ file_service:
   url: http://localhost:8085/api
 user_service:
   url: http://localhost:8083/api
+search_service:
+  url: http://localhost:8086/api

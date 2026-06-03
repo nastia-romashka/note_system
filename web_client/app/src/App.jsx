@@ -1,13 +1,15 @@
 import { useState } from "react";
 
 import { useAuthSession } from "./hooks/useAuthSession";
+import { useCalendarData } from "./hooks/useCalendarData";
 import { useFilesData } from "./hooks/useFilesData";
 import { useGraphData } from "./hooks/useGraphData";
 import { useNotesData } from "./hooks/useNotesData";
 import { useProfileData } from "./hooks/useProfileData";
 import AuthPage from "./pages/AuthPage/AuthPage";
+import CalendarPage from "./pages/CalendarPage/CalendarPage";
 import GraphPage from "./pages/GraphPage/GraphPage";
-import { ConfirmDialog, SubcategoryDialog } from "./pages/NotesPage/Dialogs";
+import { ConfirmDialog, DuplicateNoteDialog, SubcategoryDialog } from "./pages/NotesPage/Dialogs";
 import { FlashMessage } from "./pages/NotesPage/Messages";
 import NotesPage from "./pages/NotesPage/NotesPage";
 import ProfilePage from "./pages/ProfilePage/ProfilePage";
@@ -24,6 +26,17 @@ function App() {
     uiPreview: UI_PREVIEW,
     setMessage,
     setLoading,
+  });
+  const calendarData = useCalendarData({
+    token,
+    categories: notesData.categories,
+    uiPreview: UI_PREVIEW,
+    setMessage,
+    setLoading,
+    onOpenNote: (note) => {
+      notesData.handleOpenNote(note);
+      setPage("notes");
+    },
   });
   const filesData = useFilesData({
     token,
@@ -43,10 +56,16 @@ function App() {
     setMessage,
   });
 
+  function openTodayInCalendar() {
+    const today = new Date();
+    calendarData.setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    calendarData.setSelectedDay(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
+  }
+
   function logout() {
     clearSession();
     if (UI_PREVIEW) {
-      setMessage({ type: "info", text: "Режим предпросмотра: возврат на экран входа." });
+      setMessage({ type: "info", text: "Preview mode: возврат на экран входа." });
       return;
     }
 
@@ -72,6 +91,9 @@ function App() {
             </button>
             <button type="button" className={page === "notes" ? "active" : ""} onClick={() => setPage("notes")}>
               Заметки
+            </button>
+            <button type="button" className={page === "calendar" ? "active" : ""} onClick={() => setPage("calendar")}>
+              Календарь
             </button>
             <button type="button" className={page === "profile" ? "active" : ""} onClick={() => setPage("profile")}>
               ЛК
@@ -110,6 +132,23 @@ function App() {
           loading={loading}
         />
       )}
+      {notesData.duplicateDialog && (
+        <DuplicateNoteDialog
+          categories={notesData.categories}
+          categoryUuid={notesData.duplicateDialog.categoryUuid}
+          onCategoryChange={(value) =>
+            notesData.setDuplicateDialog((current) => (current ? { ...current, categoryUuid: value } : current))
+          }
+          header={notesData.duplicateDialog.header}
+          onHeaderChange={(value) =>
+            notesData.setDuplicateDialog((current) => (current ? { ...current, header: value } : current))
+          }
+          shortBody={notesData.duplicateDialog.shortBody}
+          onConfirm={() => void notesData.confirmDuplicateNote()}
+          onCancel={notesData.closeDuplicateDialog}
+          loading={loading}
+        />
+      )}
 
       {(page === "login" || page === "signup") && (
         <AuthPage
@@ -125,22 +164,32 @@ function App() {
         <NotesPage
           loading={loading}
           categories={notesData.categories}
+          selectedCategory={notesData.selectedCategory}
           selectedCategoryId={notesData.selectedCategoryId}
           onSelectCategory={notesData.setSelectedCategoryId}
           onOpenSubcategoryDialog={notesData.openSubcategoryDialog}
           notes={notesData.filteredNotes}
           selectedNote={notesData.selectedNote}
           selectedNoteId={notesData.selectedNoteId}
-          onSelectNote={notesData.setSelectedNoteId}
+          onSelectNote={notesData.handleSelectNote}
           onOpenProfile={() => setPage("profile")}
           onOpenGraph={() => setPage("graph")}
-          onLogout={logout}
+          onOpenCalendar={() => setPage("calendar")}
           search={notesData.search}
           onSearch={notesData.setSearch}
+          searchResults={notesData.searchResults}
+          onSelectSearchResult={notesData.handleSelectSearchResult}
           categoryForm={notesData.categoryForm}
           onCategoryFormChange={notesData.setCategoryForm}
           onCreateCategory={notesData.handleCreateCategory}
           onDeleteCategory={notesData.openDeleteCategoryDialog}
+          categoryEditor={notesData.categoryEditor}
+          onCategoryEditorChange={notesData.setCategoryEditor}
+          onCloseCategoryEditor={notesData.closeCategoryEditor}
+          onStartRenameCategory={notesData.startRenameCategory}
+          onStartRecolorCategory={notesData.startRecolorCategory}
+          onSubmitCategoryRename={notesData.submitCategoryRename}
+          onSubmitCategoryColor={notesData.submitCategoryColor}
           noteForm={notesData.noteForm}
           onNoteFormChange={notesData.setNoteForm}
           noteEditorForm={notesData.noteEditorForm}
@@ -149,6 +198,7 @@ function App() {
           onCreateNote={notesData.handleCreateNote}
           onUpdateNote={notesData.handleUpdateNote}
           onDeleteNote={notesData.handleDeleteNote}
+          onOpenDuplicateDialog={notesData.openDuplicateDialog}
           files={filesData.files}
           onDownloadFile={filesData.handleDownloadFile}
           onDeleteFile={filesData.handleDeleteFile}
@@ -159,14 +209,47 @@ function App() {
         />
       )}
 
+      {page === "calendar" && (
+        <CalendarPage
+          currentMonth={calendarData.currentMonth}
+          selectedDay={calendarData.selectedDay}
+          notesByDay={calendarData.notesByDay}
+          selectedDayNotes={calendarData.selectedDayNotes}
+          categories={notesData.categories}
+          createDialog={calendarData.createDialog}
+          onCreateDialogChange={calendarData.setCreateDialog}
+          onOpenCreateDialog={calendarData.openCreateDialog}
+          onCloseCreateDialog={calendarData.closeCreateDialog}
+          onConfirmCreateDialog={() => void calendarData.confirmCreateFromCalendar()}
+          onSelectDay={calendarData.setSelectedDay}
+          onChangeMonth={(offset) =>
+            calendarData.setCurrentMonth(
+              new Date(
+                calendarData.currentMonth.getFullYear(),
+                calendarData.currentMonth.getMonth() + offset,
+                1,
+              ),
+            )
+          }
+          onToday={openTodayInCalendar}
+          onOpenNote={calendarData.openNote}
+          onOpenNotes={() => setPage("notes")}
+          onOpenProfile={() => setPage("profile")}
+        />
+      )}
+
       {page === "profile" && (
         <ProfilePage
           summary={profileData.summary}
           actions={profileData.actions}
           loading={profileData.profileLoading}
+          profileForm={profileData.profileForm}
+          onProfileFormChange={profileData.setProfileForm}
+          onSubmitProfileUpdate={() => void profileData.submitProfileUpdate()}
           onRefresh={profileData.refreshProfile}
           onBackToNotes={() => setPage("notes")}
           onOpenGraph={() => setPage("graph")}
+          onOpenCalendar={() => setPage("calendar")}
           onLogout={logout}
         />
       )}
@@ -175,10 +258,15 @@ function App() {
         <GraphPage
           graph={graphData.graph}
           loading={graphData.graphLoading}
-          onRefresh={graphData.refreshGraph}
+          onCreateGraphLink={graphData.createUserGraphLink}
+          onDeleteGraphLink={graphData.deleteUserGraphLink}
           onBackToNotes={() => setPage("notes")}
+          onOpenCalendar={() => setPage("calendar")}
+          onOpenGraphNode={(node) => {
+            notesData.handleOpenGraphNode(node);
+            setPage("notes");
+          }}
           onOpenProfile={() => setPage("profile")}
-          onLogout={logout}
         />
       )}
     </div>

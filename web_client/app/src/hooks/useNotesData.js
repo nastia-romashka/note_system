@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { createCategory, deleteCategory, fetchCategories } from "../api/categoriesApi";
-import { createNote, deleteNote, fetchNotes, updateNote } from "../api/notesApi";
+import { createCategory, deleteCategory, fetchCategories, updateCategory } from "../api/categoriesApi";
+import { createNote, deleteNote, duplicateNote, fetchNotes, fetchSearchNotes, updateNote } from "../api/notesApi";
 import { createTag, fetchTags } from "../api/tagsApi";
 import { PREVIEW_DATA } from "../preview/previewData";
 
@@ -9,6 +9,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
   const [categories, setCategories] = useState(uiPreview ? PREVIEW_DATA.categories : []);
   const [notes, setNotes] = useState(uiPreview ? PREVIEW_DATA.notes["cat-1"] : []);
   const [tags, setTags] = useState(uiPreview ? PREVIEW_DATA.tags : []);
+  const [searchResults, setSearchResults] = useState([]);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(uiPreview ? "cat-1" : "");
   const [selectedNoteId, setSelectedNoteId] = useState(uiPreview ? "note-1" : "");
@@ -16,12 +17,18 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
   const [categoryForm, setCategoryForm] = useState({ name: "", color: "#9db8ff" });
   const [noteForm, setNoteForm] = useState({ header: "", body: "", tags: "" });
-  const [noteEditorForm, setNoteEditorForm] = useState({ header: "", body: "", tags: "" });
+  const [noteEditorForm, setNoteEditorForm] = useState(createEmptyEditorForm());
   const [pendingCategoryDelete, setPendingCategoryDelete] = useState(null);
   const [subcategoryDraft, setSubcategoryDraft] = useState("");
   const [subcategoryParent, setSubcategoryParent] = useState(null);
+  const [categoryEditor, setCategoryEditor] = useState(null);
+  const [duplicateDialog, setDuplicateDialog] = useState(null);
 
   const filteredNotes = useMemo(() => {
+    if (!uiPreview) {
+      return notes;
+    }
+
     const query = search.trim().toLowerCase();
     if (!query) {
       return notes;
@@ -31,7 +38,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
       const haystack = `${note.header} ${note.body} ${note.short_body}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [notes, search]);
+  }, [uiPreview, notes, search]);
 
   const selectedNote = useMemo(
     () =>
@@ -39,6 +46,11 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
       notes.find((note) => note.uuid === selectedNoteId) ||
       null,
     [filteredNotes, notes, selectedNoteId],
+  );
+
+  const selectedCategory = useMemo(
+    () => findCategoryById(categories, selectedCategoryId),
+    [categories, selectedCategoryId],
   );
 
   const parsedEditorTags = useMemo(() => parseTagNames(noteEditorForm.tags), [noteEditorForm.tags]);
@@ -67,11 +79,29 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     }
 
     void loadNotes(selectedCategoryId, selectedNoteId);
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, token]);
+
+  useEffect(() => {
+    if (uiPreview || !token) {
+      return;
+    }
+
+    const query = search.trim();
+    if (!query) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void loadSearchResults(query);
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [search, token]);
 
   useEffect(() => {
     if (!selectedNote) {
-      setNoteEditorForm({ header: "", body: "", tags: "" });
+      setNoteEditorForm(createEmptyEditorForm());
       return;
     }
 
@@ -79,6 +109,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
       header: selectedNote.header || "",
       body: selectedNote.body || "",
       tags: stringifyTagNames(selectedNote.tags || [], tags),
+      ...toEventEditorState(selectedNote.event),
     });
   }, [selectedNote, tags]);
 
@@ -113,13 +144,145 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     try {
       setLoading(true);
       const noteList = await fetchNotes(token, categoryId);
-      const safeNoteList = Array.isArray(noteList) ? noteList : [];
-      setNotes(safeNoteList);
+      applyNotesList(noteList, preferredNoteId);
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-      const nextNoteId = safeNoteList.some((note) => note.uuid === preferredNoteId)
-        ? preferredNoteId
-        : (safeNoteList[0]?.uuid || "");
-      setSelectedNoteId(nextNoteId);
+  async function loadSearchResults(query) {
+    try {
+      const noteList = await fetchSearchNotes(token, { query });
+      setSearchResults(Array.isArray(noteList) ? noteList : []);
+    } catch (error) {
+      setSearchResults([]);
+      handleError(error);
+    }
+  }
+
+  function applyNotesList(noteList, preferredNoteId) {
+    const safeNoteList = Array.isArray(noteList) ? noteList : [];
+    setNotes(safeNoteList);
+
+    const nextNoteId = safeNoteList.some((note) => note.uuid === preferredNoteId)
+      ? preferredNoteId
+      : (safeNoteList[0]?.uuid || "");
+    setSelectedNoteId(nextNoteId);
+  }
+
+  function handleSelectNote(noteId) {
+    if (!noteId) {
+      setSelectedNoteId("");
+      return;
+    }
+
+    const note =
+      notes.find((item) => item.uuid === noteId) ||
+      filteredNotes.find((item) => item.uuid === noteId) ||
+      null;
+
+    if (note?.category_uuid && note.category_uuid !== selectedCategoryId) {
+      setSelectedCategoryId(note.category_uuid);
+    }
+
+    setSelectedNoteId(noteId);
+  }
+
+  function handleSelectSearchResult(note) {
+    if (!note?.uuid) {
+      return;
+    }
+
+    handleOpenNote(note);
+  }
+
+  function handleOpenNote(note) {
+    if (!note?.uuid) {
+      return;
+    }
+
+    setSearch("");
+    setSearchResults([]);
+
+    if (note.category_uuid && note.category_uuid !== selectedCategoryId) {
+      setSelectedCategoryId(note.category_uuid);
+    }
+
+    setSelectedNoteId(note.uuid);
+  }
+
+  function handleOpenGraphNode(node) {
+    if (!node?.type || !node?.nodeId) {
+      return;
+    }
+
+    setSearch("");
+    setSearchResults([]);
+
+    if (node.type === "category") {
+      setSelectedCategoryId(node.nodeId);
+      setSelectedNoteId("");
+      return;
+    }
+
+    if (node.type === "note") {
+      if (node.category_uuid) {
+        setSelectedCategoryId(node.category_uuid);
+      }
+      setSelectedNoteId(node.nodeId);
+    }
+  }
+
+  function openDuplicateDialog() {
+    if (uiPreview) {
+      setMessage({ type: "info", text: "Preview mode: дублирование заметок отключено." });
+      return;
+    }
+
+    if (!selectedNote) {
+      return;
+    }
+
+    setDuplicateDialog({
+      sourceNoteUuid: selectedNote.uuid,
+      categoryUuid: selectedNote.category_uuid || selectedCategoryId,
+      header: `${selectedNote.header || "Без названия"} (копия)`,
+      shortBody: selectedNote.short_body || selectedNote.body || "",
+    });
+  }
+
+  function closeDuplicateDialog() {
+    setDuplicateDialog(null);
+  }
+
+  async function confirmDuplicateNote() {
+    if (!duplicateDialog?.sourceNoteUuid) {
+      return;
+    }
+
+    const header = duplicateDialog.header.trim();
+    if (!header) {
+      setMessage({ type: "warning", text: "Введите заголовок копии заметки." });
+      return;
+    }
+    if (!duplicateDialog.categoryUuid) {
+      setMessage({ type: "warning", text: "Выберите категорию для копии заметки." });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const duplicated = await duplicateNote(token, duplicateDialog.sourceNoteUuid, {
+        category_uuid: duplicateDialog.categoryUuid,
+        header,
+      });
+
+      setDuplicateDialog(null);
+      setSelectedCategoryId(duplicated.category_uuid);
+      await loadNotes(duplicated.category_uuid, duplicated.uuid);
+      setMessage({ type: "success", text: "Заметка продублирована." });
     } catch (error) {
       handleError(error);
     } finally {
@@ -194,6 +357,89 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     setPendingCategoryDelete(category || { uuid: categoryId, name: "Категория" });
   }
 
+  function openCategoryEditor(category, mode = "menu") {
+    if (!category?.uuid) {
+      return;
+    }
+
+    setCategoryEditor({
+      uuid: category.uuid,
+      mode,
+      name: category.name || "",
+      color: category.color || "#9db8ff",
+    });
+  }
+
+  function closeCategoryEditor() {
+    setCategoryEditor(null);
+  }
+
+  function startRenameCategory(category) {
+    if (uiPreview) {
+      setMessage({ type: "info", text: "Preview mode: редактирование категорий отключено." });
+      return;
+    }
+
+    openCategoryEditor(category, "rename");
+  }
+
+  function startRecolorCategory(category) {
+    if (uiPreview) {
+      setMessage({ type: "info", text: "Preview mode: редактирование категорий отключено." });
+      return;
+    }
+
+    openCategoryEditor(category, "color");
+  }
+
+  async function submitCategoryRename() {
+    if (!categoryEditor?.uuid) {
+      return;
+    }
+
+    const name = categoryEditor.name.trim();
+    if (!name) {
+      setMessage({ type: "warning", text: "Введите название категории." });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await updateCategory(token, categoryEditor.uuid, { name });
+      setMessage({ type: "success", text: "Название категории обновлено." });
+      await bootstrap(selectedCategoryId, false);
+      setCategoryEditor(null);
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitCategoryColor(color = categoryEditor?.color) {
+    if (!categoryEditor?.uuid || !color) {
+      return;
+    }
+
+    const name = categoryEditor.name.trim();
+    if (!name) {
+      setMessage({ type: "warning", text: "Введите название категории." });
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await updateCategory(token, categoryEditor.uuid, { name, color });
+      setMessage({ type: "success", text: "Цвет категории обновлен." });
+      await bootstrap(selectedCategoryId, false);
+      setCategoryEditor((current) => (current ? { ...current, color, mode: "menu" } : current));
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function confirmDeleteCategory() {
     if (!pendingCategoryDelete) {
       return;
@@ -217,6 +463,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
       handleError(error);
     } finally {
       setPendingCategoryDelete(null);
+      setCategoryEditor(null);
       setLoading(false);
     }
   }
@@ -259,20 +506,13 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     }
 
     if (!selectedCategoryId) {
-      setMessage({ type: "warning", text: "Сначала выбери категорию." });
+      setMessage({ type: "warning", text: "Сначала выберите категорию." });
       return;
     }
 
     const header = noteForm.header.trim();
-    const body = noteForm.body.trim();
-
     if (!header) {
       setMessage({ type: "warning", text: "Введите заголовок заметки." });
-      return;
-    }
-
-    if (!body) {
-      setMessage({ type: "warning", text: "Введите текст заметки." });
       return;
     }
 
@@ -281,7 +521,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
       const tagUUIDs = await ensureTagUUIDs(noteForm.tags);
       await createNote(token, {
         header,
-        body,
+        body: noteForm.body.trim(),
         category_uuid: selectedCategoryId,
         tags: tagUUIDs,
       });
@@ -306,6 +546,12 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
       return;
     }
 
+    const eventPayload = buildEventPayload(noteEditorForm);
+    if (noteEditorForm.scheduled && !eventPayload) {
+      setMessage({ type: "warning", text: "Укажите корректные дату и время события." });
+      return;
+    }
+
     try {
       setLoading(true);
       const tagUUIDs = await ensureTagUUIDs(noteEditorForm.tags);
@@ -313,6 +559,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
         header: noteEditorForm.header,
         body: noteEditorForm.body,
         tags: tagUUIDs,
+        event: noteEditorForm.scheduled ? eventPayload : null,
       });
       setMessage({ type: "success", text: "Заметка обновлена." });
       await loadNotes(selectedCategoryId, selectedNote.uuid);
@@ -349,7 +596,9 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
   function resetNotesState() {
     setCategories([]);
     setNotes([]);
+    setSearchResults([]);
     setTags([]);
+    setCategoryEditor(null);
     setSelectedCategoryId("");
     setSelectedNoteId("");
     setSearch("");
@@ -364,12 +613,18 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
   return {
     categories,
+    searchResults,
     filteredNotes,
     selectedNote,
+    selectedCategory,
     selectedCategoryId,
     setSelectedCategoryId,
     selectedNoteId,
     setSelectedNoteId,
+    handleSelectNote,
+    handleSelectSearchResult,
+    handleOpenNote,
+    handleOpenGraphNode,
     search,
     setSearch,
     categoryForm,
@@ -385,6 +640,15 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     setSubcategoryDraft,
     subcategoryParent,
     closeSubcategoryDialog,
+    categoryEditor,
+    duplicateDialog,
+    setCategoryEditor,
+    openCategoryEditor,
+    closeCategoryEditor,
+    startRenameCategory,
+    startRecolorCategory,
+    submitCategoryRename,
+    submitCategoryColor,
     handleCreateCategory,
     openSubcategoryDialog,
     confirmCreateSubcategory,
@@ -393,8 +657,84 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     handleCreateNote,
     handleUpdateNote,
     handleDeleteNote,
+    openDuplicateDialog,
+    closeDuplicateDialog,
+    confirmDuplicateNote,
+    setDuplicateDialog,
     resetNotesState,
   };
+}
+
+function createEmptyEditorForm() {
+  return {
+    header: "",
+    body: "",
+    tags: "",
+    ...emptyEventEditorState(),
+  };
+}
+
+function emptyEventEditorState() {
+  return {
+    scheduled: false,
+    eventEnabled: true,
+    eventDate: "",
+    eventStartTime: "09:00",
+    eventEndTime: "10:00",
+  };
+}
+
+function toEventEditorState(event) {
+  if (!event?.start_at || !event?.end_at) {
+    return emptyEventEditorState();
+  }
+
+  return {
+    scheduled: true,
+    eventEnabled: event.enabled !== false,
+    eventDate: formatDateForInput(event.start_at),
+    eventStartTime: formatTimeForInput(event.start_at),
+    eventEndTime: formatTimeForInput(event.end_at),
+  };
+}
+
+function buildEventPayload(form) {
+  if (!form?.scheduled) {
+    return null;
+  }
+  if (!form.eventDate || !form.eventStartTime || !form.eventEndTime) {
+    return null;
+  }
+
+  const startDate = new Date(`${form.eventDate}T${form.eventStartTime}:00`);
+  const endDate = new Date(`${form.eventDate}T${form.eventEndTime}:00`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+  if (endDate.getTime() < startDate.getTime()) {
+    return null;
+  }
+
+  return {
+    enabled: form.eventEnabled,
+    start_at: Math.floor(startDate.getTime() / 1000),
+    end_at: Math.floor(endDate.getTime() / 1000),
+  };
+}
+
+function formatDateForInput(unixSeconds) {
+  const date = new Date(unixSeconds * 1000);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatTimeForInput(unixSeconds) {
+  const date = new Date(unixSeconds * 1000);
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
 
 function findCategoryById(categories, categoryId) {

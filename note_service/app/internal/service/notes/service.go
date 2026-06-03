@@ -51,6 +51,25 @@ func (s *service) GetByCategoryUUID(categoryUUID, userUUID string) (notes []hand
 	return notes, nil
 }
 
+func (s *service) GetByEventRange(from, to int64, userUUID string) (notes []handlermodel.Note, err error) {
+	if strings.TrimSpace(userUUID) == "" {
+		return nil, apperror.BadRequestError("user_uuid is required")
+	}
+	if from <= 0 || to <= 0 {
+		return nil, apperror.BadRequestError("from and to are required")
+	}
+	if from > to {
+		return nil, apperror.BadRequestError("from must be less than or equal to to")
+	}
+
+	notes, err = s.storage.FindByEventRange(from, to, userUUID)
+	if err != nil {
+		return nil, fmt.Errorf("get notes by event range: %w", err)
+	}
+
+	return notes, nil
+}
+
 func (s *service) GetStats(userUUID string) (stats handlermodel.NoteStats, err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return handlermodel.NoteStats{}, apperror.BadRequestError("user_uuid is required")
@@ -71,12 +90,10 @@ func (s *service) Create(dto handlermodel.CreateNoteDTO) (noteUUID string, err e
 	if strings.TrimSpace(dto.Header) == "" {
 		return "", apperror.BadRequestError("header is required")
 	}
-	if strings.TrimSpace(dto.Body) == "" {
-		return "", apperror.BadRequestError("body is required")
-	}
 	if strings.TrimSpace(dto.CategoryUuid) == "" {
 		return "", apperror.BadRequestError("category_uuid is required")
 	}
+	dto.Body = strings.TrimSpace(dto.Body)
 	if err = s.storage.CheckTagsExist(dto.Tags, dto.UserUuid); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return "", apperror.BadRequestError("one or more tags do not exist")
@@ -84,14 +101,21 @@ func (s *service) Create(dto handlermodel.CreateNoteDTO) (noteUUID string, err e
 		return "", fmt.Errorf("check tags before create note: %w", err)
 	}
 
+	if err = validateEvent(dto.Event); err != nil {
+		return "", err
+	}
+	now := time.Now().Unix()
+
 	noteUUID, err = s.storage.Create(handlermodel.Note{
 		UserUuid:     dto.UserUuid,
 		Header:       dto.Header,
 		Body:         dto.Body,
 		ShortBody:    makeShortBody(dto.Body),
-		CreatedDate:  time.Now().Unix(),
+		CreatedDate:  now,
+		UpdatedAt:    now,
 		CategoryUuid: dto.CategoryUuid,
 		Tags:         dto.Tags,
+		Event:        dto.Event,
 	})
 	if err != nil {
 		return "", fmt.Errorf("create note: %w", err)
@@ -100,22 +124,23 @@ func (s *service) Create(dto handlermodel.CreateNoteDTO) (noteUUID string, err e
 	return noteUUID, nil
 }
 
-func (s *service) Update(noteUUID, userUUID string, dto handlermodel.UpdateNoteDTO, tagsUpdate bool) (err error) {
+func (s *service) Update(
+	noteUUID, userUUID string,
+	dto handlermodel.UpdateNoteDTO,
+	headerUpdate, bodyUpdate, categoryUpdate, tagsUpdate, eventUpdate bool,
+) (err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return apperror.BadRequestError("user_uuid is required")
 	}
-	if dto.Header == "" && dto.Body == "" && dto.CategoryUuid == "" && !tagsUpdate {
+	if !headerUpdate && !bodyUpdate && !categoryUpdate && !tagsUpdate && !eventUpdate {
 		return apperror.BadRequestError("empty update payload")
 	}
 
-	if dto.Body != "" {
+	if bodyUpdate {
 		dto.Body = strings.TrimSpace(dto.Body)
-		if dto.Body == "" {
-			return apperror.BadRequestError("body is required")
-		}
 	}
 
-	if dto.Header != "" {
+	if headerUpdate {
 		dto.Header = strings.TrimSpace(dto.Header)
 		if dto.Header == "" {
 			return apperror.BadRequestError("header is required")
@@ -129,19 +154,49 @@ func (s *service) Update(noteUUID, userUUID string, dto handlermodel.UpdateNoteD
 			return fmt.Errorf("check tags before update note: %w", err)
 		}
 	}
+	if eventUpdate {
+		if err = validateEvent(dto.Event); err != nil {
+			return err
+		}
+	}
 
 	err = s.storage.Update(noteUUID, userUUID, handlermodel.Note{
 		Header:       dto.Header,
 		Body:         dto.Body,
 		ShortBody:    makeShortBody(dto.Body),
+		UpdatedAt:    time.Now().Unix(),
 		CategoryUuid: dto.CategoryUuid,
 		Tags:         dto.Tags,
-	}, tagsUpdate)
+		Event:        dto.Event,
+	}, storage.UpdateOptions{
+		Header:   headerUpdate,
+		Body:     bodyUpdate,
+		Category: categoryUpdate,
+		Tags:     tagsUpdate,
+		Event:    eventUpdate,
+	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return err
 		}
 		return fmt.Errorf("update note: %w", err)
+	}
+
+	return nil
+}
+
+func validateEvent(event *handlermodel.NoteEvent) error {
+	if event == nil {
+		return nil
+	}
+	if event.StartAt <= 0 {
+		return apperror.BadRequestError("event.start_at is required")
+	}
+	if event.EndAt <= 0 {
+		return apperror.BadRequestError("event.end_at is required")
+	}
+	if event.EndAt < event.StartAt {
+		return apperror.BadRequestError("event.end_at must be greater than or equal to event.start_at")
 	}
 
 	return nil

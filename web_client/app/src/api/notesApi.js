@@ -1,4 +1,4 @@
-import { authHeaders, request } from "./http";
+import { API_BASE_URL, authHeaders, readSafeJson, request } from "./http";
 
 export function fetchNotes(token, categoryId) {
   return request(`/api/notes?category_uuid=${encodeURIComponent(categoryId)}`, {
@@ -11,11 +11,49 @@ export function fetchNotes(token, categoryId) {
   });
 }
 
+export function fetchSearchNotes(token, { query, categoryId }) {
+  const params = new URLSearchParams();
+  if (query) {
+    params.set("q", query);
+  }
+  if (categoryId) {
+    params.set("category_uuid", categoryId);
+  }
+
+  return request(`/api/search/notes?${params.toString()}`, {
+    headers: authHeaders(token),
+  });
+}
+
+export function fetchCalendarNotes(token, { from, to }) {
+  const params = new URLSearchParams({
+    from: String(from),
+    to: String(to),
+  });
+
+  return request(`/api/calendar?${params.toString()}`, {
+    headers: authHeaders(token),
+  });
+}
+
 export function createNote(token, payload) {
-  return request("/api/notes", {
+  return fetch(`${API_BASE_URL}/api/notes`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
+  }).then(async (response) => {
+    if (!response.ok) {
+      const errorData = await readSafeJson(response);
+      throw new Error(errorData?.developer_message || errorData?.message || "Запрос завершился с ошибкой.");
+    }
+
+    const location = response.headers.get("Location") || "";
+    const uuid = location.split("/").filter(Boolean).at(-1) || "";
+    return {
+      uuid,
+      category_uuid: payload.category_uuid,
+      ...payload,
+    };
   });
 }
 
@@ -31,5 +69,13 @@ export function deleteNote(token, noteId) {
   return request(`/api/notes/${noteId}`, {
     method: "DELETE",
     headers: authHeaders(token),
+  });
+}
+
+export function duplicateNote(token, noteId, payload) {
+  return request(`/api/notes/${noteId}/duplicate`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
   });
 }

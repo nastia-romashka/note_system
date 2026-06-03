@@ -12,6 +12,7 @@ class UpdateCategoryDTO(Base):
     uuid: str | None = None
     name: str
     color: str | None = None
+    user_uuid: str | None = None
     parent_uuid: str | None = None
 
 
@@ -39,3 +40,15 @@ class DeleteGraphNoteDTO(Base):
 
 class LinkGraphNotesDTO(Base):
     user_uuid: str
+
+
+class CreateUserGraphLinkDTO(Base):
+    user_uuid: str
+    source_id: str
+    target_id: str
+
+
+class DeleteUserGraphLinkDTO(Base):
+    user_uuid: str
+    source_id: str
+    target_id: str

@@ -11,6 +11,7 @@ services:
       API_SERVICE_NOTE_URL: http://note_service:8082/api
       API_SERVICE_FILE_URL: http://file_service:8085/api
       API_SERVICE_USER_URL: http://user_service:8083/api
+      API_SERVICE_SEARCH_URL: http://search_service:8086/api
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -25,6 +26,8 @@ services:
       user_service:
         condition: service_healthy
       file_service:
+        condition: service_healthy
+      search_service:
         condition: service_healthy
 
   note_service:
@@ -111,6 +114,27 @@ services:
       neo4j:
         condition: service_healthy
 
+  search_service:
+    build:
+      context: ./search_service
+    image: ${DOCKERHUB_NAMESPACE:-local}/notes-system-search:latest
+    ports:
+      - "8086:8086"
+    environment:
+      SEARCH_SERVICE_BIND_IP: 0.0.0.0
+      SEARCH_SERVICE_TYPESENSE_URL: http://typesense:8108
+      SEARCH_SERVICE_TYPESENSE_API_KEY: local-typesense-api-key
+      SEARCH_SERVICE_TYPESENSE_COLLECTION: notes
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8086/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      typesense:
+        condition: service_healthy
+
   web_client:
     build:
       context: ./web_client
@@ -195,7 +219,26 @@ services:
       - ./category_service/export/neo4j/import:/import
       - ./category_service/export/neo4j/plugins:/plugins
 
+  typesense:
+    image: typesense/typesense:30.2
+    ports:
+      - "8108:8108"
+    command: "--data-dir /data --api-key=local-typesense-api-key --enable-cors"
+    volumes:
+      - typesense_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -lc 'exec 3<>/dev/tcp/127.0.0.1/8108 && printf \"GET /health HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && grep -q \"200 OK\" <&3' || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
 volumes:
   mongo_notes_data:
   postgres_users_data:
   minio_data:
+  typesense_data:

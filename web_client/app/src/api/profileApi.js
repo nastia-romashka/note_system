@@ -6,6 +6,14 @@ export function fetchProfileSummary(token) {
   });
 }
 
+export function updateProfile(token, payload) {
+  return request("/api/me", {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchProfileActions(token, limit = 50, offset = 0) {
   const params = new URLSearchParams({
     limit: String(limit),

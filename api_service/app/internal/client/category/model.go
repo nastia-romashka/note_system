@@ -20,7 +20,6 @@ type UpdateCategoryDTO struct {
 	Uuid       string `json:"uuid,omitempty"`
 	Name       string `json:"name,omitempty"`
 	Color      string `json:"color,omitempty"`
-	UserUuid   string `json:"user_uuid,omitempty"`
 	ParentUuid string `json:"parent_uuid,omitempty"`
 }
 
@@ -71,4 +70,10 @@ type DeleteGraphNoteDTO struct {
 
 type LinkGraphNotesDTO struct {
 	UserUuid string `json:"user_uuid"`
+}
+
+type UserGraphLinkDTO struct {
+	UserUuid string `json:"user_uuid"`
+	SourceID string `json:"source_id"`
+	TargetID string `json:"target_id"`
 }

@@ -17,6 +17,14 @@ export function createCategory(token, payload) {
   });
 }
 
+export function updateCategory(token, categoryId, payload) {
+  return request(`/api/categories/${categoryId}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+}
+
 export function deleteCategory(token, categoryId) {
   return request(`/api/categories/${categoryId}`, {
     method: "DELETE",

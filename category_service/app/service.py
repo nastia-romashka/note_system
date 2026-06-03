@@ -3,8 +3,10 @@ import logging
 from dao.category.category import CategoryDAO
 from dao.model.dto import (
     CreateCategoryDTO,
+    CreateUserGraphLinkDTO,
     CreateGraphNoteDTO,
     DeleteCategoryDTO,
+    DeleteUserGraphLinkDTO,
     UpdateCategoryDTO,
     UpdateGraphNoteDTO,
 )
@@ -135,6 +137,18 @@ class CategoryService:
             user_uuid=user_uuid,
         )
 
+    def create_user_graph_link(self, link: CreateUserGraphLinkDTO) -> None:
+        self._ensure_graph_entity_belongs_to_user(link.source_id, link.user_uuid)
+        self._ensure_graph_entity_belongs_to_user(link.target_id, link.user_uuid)
+
+        self.category_dao.create_user_graph_link(link=link)
+
+    def delete_user_graph_link(self, link: DeleteUserGraphLinkDTO) -> None:
+        self._ensure_graph_entity_belongs_to_user(link.source_id, link.user_uuid)
+        self._ensure_graph_entity_belongs_to_user(link.target_id, link.user_uuid)
+
+        self.category_dao.delete_user_graph_link(link=link)
+
     def _category_exists_for_request(
         self,
         category_uuid: str | None,
@@ -158,3 +172,11 @@ class CategoryService:
         )
         if not is_note_exist:
             raise NotFoundException(exc_data=AppError.NOTE_NOT_FOUND)
+
+    def _ensure_graph_entity_belongs_to_user(self, entity_id: str, user_uuid: str) -> None:
+        if self.category_dao.check_category_belongs_to_user(entity_id, user_uuid):
+            return
+        if self.category_dao.check_note_belongs_to_user(entity_id, user_uuid):
+            return
+
+        raise NotFoundException(exc_data=AppError.NOTE_NOT_FOUND)

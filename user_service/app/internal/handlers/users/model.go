@@ -48,3 +48,10 @@ type AuthUserDTO struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
+
+type UpdateUserProfileDTO struct {
+	Username        string `json:"username,omitempty"`
+	Email           string `json:"email,omitempty"`
+	CurrentPassword string `json:"current_password,omitempty"`
+	NewPassword     string `json:"new_password,omitempty"`
+}

@@ -1,8 +1,10 @@
 from dao.category.category import CategoryDAO
 from dao.model.dto import (
     CreateCategoryDTO,
+    CreateUserGraphLinkDTO,
     CreateGraphNoteDTO,
     DeleteCategoryDTO,
+    DeleteUserGraphLinkDTO,
     UpdateCategoryDTO,
     UpdateGraphNoteDTO,
 )
@@ -59,10 +61,19 @@ class Neo4jCategoryDAO(CategoryDAO):
             MATCH (u:User {id: $user_uuid})
             OPTIONAL MATCH (u)-[:OWN|CHILD*1..]->(category:Category)
             WITH collect(DISTINCT category) AS categories
+            OPTIONAL MATCH (parent:Category)-[:CHILD]->(child:Category)
+            WHERE parent IN categories AND child IN categories
+            WITH
+                categories,
+                collect(DISTINCT CASE
+                    WHEN parent IS NULL OR child IS NULL THEN NULL
+                    ELSE {source: parent.id, target: child.id, type: "CHILD"}
+                END) AS raw_category_edges
             OPTIONAL MATCH (category)-[:HAS_NOTE]->(note:Note {user_uuid: $user_uuid})
             WHERE category IN categories
             WITH
                 categories,
+                raw_category_edges,
                 collect(DISTINCT note) AS notes,
                 collect(DISTINCT CASE
                     WHEN note IS NULL THEN NULL
@@ -73,12 +84,40 @@ class Neo4jCategoryDAO(CategoryDAO):
             WITH
                 categories,
                 notes,
+                raw_category_edges,
                 raw_has_note_edges,
                 collect(DISTINCT {
                     source: source.uuid,
                     target: target.uuid,
                     type: type(link)
                 }) AS linked_note_edges
+            OPTIONAL MATCH (sourceEntity)-[custom:USER_LINK]->(targetEntity)
+            WHERE
+                (
+                    (sourceEntity:Category AND sourceEntity IN categories)
+                    OR
+                    (sourceEntity:Note AND sourceEntity IN notes)
+                )
+                AND
+                (
+                    (targetEntity:Category AND targetEntity IN categories)
+                    OR
+                    (targetEntity:Note AND targetEntity IN notes)
+                )
+            WITH
+                categories,
+                notes,
+                raw_category_edges,
+                raw_has_note_edges,
+                linked_note_edges,
+                collect(DISTINCT CASE
+                    WHEN sourceEntity IS NULL OR targetEntity IS NULL OR custom IS NULL THEN NULL
+                    ELSE {
+                        source: coalesce(sourceEntity.id, sourceEntity.uuid),
+                        target: coalesce(targetEntity.id, targetEntity.uuid),
+                        type: type(custom)
+                    }
+                END) AS custom_graph_edges
             RETURN
                 [category IN categories WHERE category IS NOT NULL | {
                     id: category.id,
@@ -93,7 +132,7 @@ class Neo4jCategoryDAO(CategoryDAO):
                     category_uuid: note.category_uuid
                 }] AS note_nodes,
                 [
-                    edge IN raw_has_note_edges + linked_note_edges
+                    edge IN raw_category_edges + raw_has_note_edges + linked_note_edges + custom_graph_edges
                     WHERE edge IS NOT NULL AND edge.source IS NOT NULL AND edge.target IS NOT NULL
                     | edge
                 ] AS edges
@@ -236,9 +275,16 @@ class Neo4jCategoryDAO(CategoryDAO):
             MATCH (c:Category {id: $category_uuid})
             WHERE $user_uuid IS NULL OR c.user_uuid = $user_uuid
             OPTIONAL MATCH (c)-[:CHILD*0..]->(child:Category)
-            WITH collect(DISTINCT c) + collect(DISTINCT child) AS nodes
+            WITH collect(DISTINCT c) + collect(DISTINCT child) AS raw_categories
+            UNWIND raw_categories AS category_node
+            WITH collect(DISTINCT category_node) AS categories
+            UNWIND categories AS category_node
+            OPTIONAL MATCH (category_node)-[:HAS_NOTE]->(note:Note)
+            WITH categories, collect(DISTINCT note) AS notes
+            WITH categories + notes AS nodes
             UNWIND nodes AS node
-            WITH node WHERE node IS NOT NULL
+            WITH DISTINCT node
+            WHERE node IS NOT NULL
             DETACH DELETE node
             """,
             {
@@ -346,6 +392,63 @@ class Neo4jCategoryDAO(CategoryDAO):
                 "source_note_uuid": source_note_uuid,
                 "target_note_uuid": target_note_uuid,
                 "user_uuid": user_uuid,
+            },
+        )
+
+    def create_user_graph_link(self, link: CreateUserGraphLinkDTO) -> None:
+        self.storage.create(
+            """
+            MATCH (source)
+            WHERE
+                (
+                    source:Category AND source.id = $source_id AND source.user_uuid = $user_uuid
+                )
+                OR
+                (
+                    source:Note AND source.uuid = $source_id AND source.user_uuid = $user_uuid
+                )
+            MATCH (target)
+            WHERE
+                (
+                    target:Category AND target.id = $target_id AND target.user_uuid = $user_uuid
+                )
+                OR
+                (
+                    target:Note AND target.uuid = $target_id AND target.user_uuid = $user_uuid
+                )
+            WITH source, target
+            WHERE elementId(source) <> elementId(target)
+            MERGE (source)-[:USER_LINK]->(target)
+            """,
+            {
+                "source_id": link.source_id,
+                "target_id": link.target_id,
+                "user_uuid": link.user_uuid,
+            },
+        )
+
+    def delete_user_graph_link(self, link: DeleteUserGraphLinkDTO) -> None:
+        self.storage.delete(
+            """
+            MATCH (source)-[relation:USER_LINK]->(target)
+            WHERE
+                (
+                    source:Category AND source.id = $source_id AND source.user_uuid = $user_uuid
+                    OR
+                    source:Note AND source.uuid = $source_id AND source.user_uuid = $user_uuid
+                )
+                AND
+                (
+                    target:Category AND target.id = $target_id AND target.user_uuid = $user_uuid
+                    OR
+                    target:Note AND target.uuid = $target_id AND target.user_uuid = $user_uuid
+                )
+            DELETE relation
+            """,
+            {
+                "source_id": link.source_id,
+                "target_id": link.target_id,
+                "user_uuid": link.user_uuid,
             },
         )
 

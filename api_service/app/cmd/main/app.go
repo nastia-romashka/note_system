@@ -6,6 +6,7 @@ import (
 	categoryclient "myproject/internal/client/category"
 	fileclient "myproject/internal/client/file"
 	noteclient "myproject/internal/client/note"
+	searchclient "myproject/internal/client/search"
 	userclient "myproject/internal/client/user"
 	"myproject/internal/handlers/actionlog"
 	"myproject/internal/handlers/auth"
@@ -14,8 +15,10 @@ import (
 	"myproject/internal/handlers/graph"
 	"myproject/internal/handlers/notes"
 	"myproject/internal/handlers/profile"
+	searchhandler "myproject/internal/handlers/search"
 	"myproject/internal/handlers/tags"
 
+	"myproject/pkg/docs"
 	"myproject/pkg/handlers/metric"
 	"myproject/pkg/logging"
 
@@ -48,6 +51,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"api_service"}`))
 	})
+	docs.Register(router)
 
 	logger.Println("cache инициализирован")
 	refreshTokenCache := freecache.NewCacheRepo(104857600)
@@ -77,15 +81,33 @@ func main() {
 		"categories",
 		logger,
 	)
+	searchService := searchclient.NewService(
+		cfg.SearchService.URL,
+		logger,
+	)
 	profileHandler := profile.Handler{
 		Logger:          logger,
 		UserService:     userService,
 		CategoryService: categoryService,
 	}
 
+	noteService := noteclient.NewService(
+		cfg.NoteService.URL,
+		"notes",
+		logger,
+	)
+	fileService := fileclient.NewService(
+		cfg.FileService.URL,
+		"files",
+		logger,
+	)
+	profileHandler.NoteService = noteService
 	categoriesHandler := categories.Handler{
 		Logger:          logger,
 		CategoryService: categoryService,
+		FileService:     fileService,
+		NoteService:     noteService,
+		SearchService:   searchService,
 		ActionRecorder:  actionRecorder,
 	}
 	categoriesHandler.Register(router)
@@ -94,17 +116,12 @@ func main() {
 		CategoryService: categoryService,
 	}
 	graphHandler.Register(router)
-
-	noteService := noteclient.NewService(
-		cfg.NoteService.URL,
-		"notes",
-		logger,
-	)
-	profileHandler.NoteService = noteService
 	notesHandler := notes.Handler{
 		Logger:          logger,
 		CategoryService: categoryService,
+		FileService:     fileService,
 		NoteService:     noteService,
+		SearchService:   searchService,
 		ActionRecorder:  actionRecorder,
 	}
 	notesHandler.Register(router)
@@ -115,12 +132,6 @@ func main() {
 		ActionRecorder: actionRecorder,
 	}
 	tagsHandler.Register(router)
-
-	fileService := fileclient.NewService(
-		cfg.FileService.URL,
-		"files",
-		logger,
-	)
 	profileHandler.FileService = fileService
 	profileHandler.Register(router)
 
@@ -131,6 +142,14 @@ func main() {
 		ActionRecorder: actionRecorder,
 	}
 	filesHandler.Register(router)
+
+	searchNotesHandler := searchhandler.Handler{
+		Logger:          logger,
+		SearchService:   searchService,
+		CategoryService: categoryService,
+		NoteService:     noteService,
+	}
+	searchNotesHandler.Register(router)
 
 	logger.Println("start application")
 	start(router, logger, cfg)

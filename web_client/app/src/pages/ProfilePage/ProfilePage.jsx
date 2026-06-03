@@ -1,5 +1,8 @@
+import { useState } from "react";
+
 const ACTION_LABELS = {
   "auth.login": "вошел в аккаунт",
+  "profile.updated": "обновил профиль",
   "note.created": "создал заметку",
   "note.updated": "обновил заметку",
   "note.deleted": "удалил заметку",
@@ -15,13 +18,19 @@ export default function ProfilePage({
   summary,
   actions,
   loading,
+  profileForm,
+  onProfileFormChange,
+  onSubmitProfileUpdate,
   onRefresh,
   onBackToNotes,
   onOpenGraph,
+  onOpenCalendar,
   onLogout,
 }) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const profile = summary?.profile || {};
   const stats = summary?.stats || {};
+  const upcomingEvents = Array.isArray(summary?.upcoming_events) ? summary.upcoming_events : [];
 
   return (
     <main className="profile-page">
@@ -38,6 +47,9 @@ export default function ProfilePage({
           <button className="secondary-button" type="button" onClick={onOpenGraph}>
             Граф
           </button>
+          <button className="secondary-button" type="button" onClick={onOpenCalendar}>
+            Календарь
+          </button>
           <button className="secondary-button" type="button" onClick={onRefresh} disabled={loading}>
             Обновить
           </button>
@@ -48,7 +60,18 @@ export default function ProfilePage({
       </header>
 
       <section className="profile-grid">
-        <article className="profile-card profile-main-card">
+        <article className="profile-card profile-main-card profile-main-card-shell">
+          <button
+            className="profile-settings-trigger"
+            type="button"
+            aria-label="Открыть настройки профиля"
+            onClick={() => setIsSettingsOpen(true)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+
           <div className="profile-avatar">{initials(profile.username)}</div>
           <div>
             <div className="card-label">Профиль пользователя</div>
@@ -86,6 +109,30 @@ export default function ProfilePage({
       <section className="profile-card action-history">
         <div className="section-heading">
           <div>
+            <div className="card-label">Ближайшие события</div>
+            <h2>Что запланировано</h2>
+          </div>
+          {loading && <span className="muted-text">Загрузка...</span>}
+        </div>
+
+        <div className="action-list">
+          {upcomingEvents.map((event) => (
+            <article className="action-item" key={event.uuid || `${event.header}-${event.event?.start_at || 0}`}>
+              <div className="action-dot" />
+              <div>
+                <strong>{event.header || "Без названия"}</strong>
+                <span>{event.short_body || event.body || "Запланированная заметка"}</span>
+              </div>
+              <time>{formatDate(event.event?.start_at)}</time>
+            </article>
+          ))}
+          {!upcomingEvents.length && <div className="empty-copy">Ближайших событий пока нет.</div>}
+        </div>
+      </section>
+
+      <section className="profile-card action-history">
+        <div className="section-heading">
+          <div>
             <div className="card-label">История действий</div>
             <h2>Последние события</h2>
           </div>
@@ -105,6 +152,69 @@ export default function ProfilePage({
           {!actions.length && <div className="empty-copy">История действий пока пустая.</div>}
         </div>
       </section>
+
+      {isSettingsOpen && (
+        <div className="dialog-backdrop" onClick={() => setIsSettingsOpen(false)}>
+          <div className="dialog-card profile-settings-dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <div>
+                <div className="card-label">Настройки профиля</div>
+                <h2>Имя, email и пароль</h2>
+              </div>
+              <button className="text-button" type="button" onClick={() => setIsSettingsOpen(false)}>
+                Закрыть
+              </button>
+            </div>
+
+            <form
+              className="compact-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onSubmitProfileUpdate();
+              }}
+            >
+              <input
+                value={profileForm.username}
+                onChange={(event) => onProfileFormChange((current) => ({ ...current, username: event.target.value }))}
+                placeholder="Имя пользователя"
+              />
+              <input
+                type="email"
+                value={profileForm.email}
+                onChange={(event) => onProfileFormChange((current) => ({ ...current, email: event.target.value }))}
+                placeholder="Email"
+              />
+              <input
+                type="password"
+                value={profileForm.currentPassword}
+                onChange={(event) =>
+                  onProfileFormChange((current) => ({ ...current, currentPassword: event.target.value }))
+                }
+                placeholder="Текущий пароль"
+              />
+              <input
+                type="password"
+                value={profileForm.newPassword}
+                onChange={(event) =>
+                  onProfileFormChange((current) => ({ ...current, newPassword: event.target.value }))
+                }
+                placeholder="Новый пароль"
+              />
+              <input
+                type="password"
+                value={profileForm.confirmPassword}
+                onChange={(event) =>
+                  onProfileFormChange((current) => ({ ...current, confirmPassword: event.target.value }))
+                }
+                placeholder="Подтвердите новый пароль"
+              />
+              <button className="primary-button" type="submit" disabled={loading}>
+                Сохранить изменения
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -123,6 +233,7 @@ function initials(username = "") {
   if (!value) {
     return "NS";
   }
+
   return value.slice(0, 2).toUpperCase();
 }
 

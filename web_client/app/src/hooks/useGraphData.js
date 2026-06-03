@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { fetchGraph } from "../api/graphApi";
+import { createGraphLink, deleteGraphLink, fetchGraph } from "../api/graphApi";
 
 const EMPTY_GRAPH = {
   nodes: [],
@@ -45,9 +45,62 @@ export function useGraphData({ token, enabled, setMessage }) {
     }
   }
 
+  async function createUserGraphLink(sourceId, targetId) {
+    if (!token || !sourceId || !targetId) {
+      return;
+    }
+
+    try {
+      setGraphLoading(true);
+      await createGraphLink(token, {
+        source_id: sourceId,
+        target_id: targetId,
+      });
+      await loadGraph();
+      setMessage({
+        type: "success",
+        text: "Пользовательская связь добавлена.",
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Не удалось создать связь.",
+      });
+    } finally {
+      setGraphLoading(false);
+    }
+  }
+
+  async function deleteUserGraphLink(sourceId, targetId) {
+    if (!token || !sourceId || !targetId) {
+      return;
+    }
+
+    try {
+      setGraphLoading(true);
+      await deleteGraphLink(token, {
+        source_id: sourceId,
+        target_id: targetId,
+      });
+      await loadGraph();
+      setMessage({
+        type: "success",
+        text: "Пользовательская связь удалена.",
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Не удалось удалить связь.",
+      });
+    } finally {
+      setGraphLoading(false);
+    }
+  }
+
   return {
     graph,
     graphLoading,
-    refreshGraph: loadGraph,
+    createUserGraphLink,
+    deleteUserGraphLink,
   };
 }
