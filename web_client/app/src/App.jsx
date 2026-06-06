@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { logoutCurrentSession } from "./api/authApi";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { useCalendarData } from "./hooks/useCalendarData";
 import { useFilesData } from "./hooks/useFilesData";
@@ -62,13 +63,20 @@ function App() {
     calendarData.setSelectedDay(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   }
 
-  function logout() {
-    clearSession();
+  async function logout() {
     if (UI_PREVIEW) {
+      clearSession();
       setMessage({ type: "info", text: "Preview mode: возврат на экран входа." });
       return;
     }
 
+    try {
+      await logoutCurrentSession();
+    } catch {
+      // Clear the local session even if the server-side revoke call fails.
+    }
+
+    clearSession();
     notesData.resetNotesState();
     filesData.resetFilesState();
     setMessage({ type: "info", text: "Сессия завершена." });

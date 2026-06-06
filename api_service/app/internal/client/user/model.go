@@ -54,3 +54,32 @@ type CreateUserActionDTO struct {
 	IPAddress  string         `json:"ip_address,omitempty"`
 	UserAgent  string         `json:"user_agent,omitempty"`
 }
+
+type CreateUserSessionDTO struct {
+	UserUUID         string `json:"user_uuid"`
+	RefreshTokenHash string `json:"refresh_token_hash"`
+	ExpiresAt        int64  `json:"expires_at"`
+	UserAgent        string `json:"user_agent,omitempty"`
+	IPAddress        string `json:"ip_address,omitempty"`
+}
+
+type RotateUserSessionDTO struct {
+	RefreshTokenHash    string `json:"refresh_token_hash"`
+	NewRefreshTokenHash string `json:"new_refresh_token_hash"`
+	ExpiresAt           int64  `json:"expires_at"`
+	UserAgent           string `json:"user_agent,omitempty"`
+	IPAddress           string `json:"ip_address,omitempty"`
+}
+
+type RevokeUserSessionDTO struct {
+	RefreshTokenHash string `json:"refresh_token_hash"`
+}
+
+type UserSession struct {
+	Uuid      string `json:"uuid,omitempty"`
+	UserUUID  string `json:"user_uuid,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
+	IPAddress string `json:"ip_address,omitempty"`
+	CreatedAt int64  `json:"created_at,omitempty"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
+}

@@ -7,15 +7,13 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/julienschmidt/httprouter"
-
 	"note_service/internal/apperror"
 	"note_service/pkg/logging"
 )
 
 const (
 	notesURL    = "/api/notes"
-	noteURL     = "/api/notes/:uuid"
+	noteURL     = "/api/notes/{uuid}"
 	statsURL    = "/api/stats"
 	calendarURL = "/api/calendar"
 )
@@ -35,14 +33,14 @@ type Handler struct {
 	NoteService NoteService
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, notesURL, apperror.Middleware(h.GetNotesByCategory))
-	router.HandlerFunc(http.MethodGet, calendarURL, apperror.Middleware(h.GetCalendarNotes))
-	router.HandlerFunc(http.MethodPost, notesURL, apperror.Middleware(h.CreateNote))
-	router.HandlerFunc(http.MethodGet, noteURL, apperror.Middleware(h.GetNote))
-	router.HandlerFunc(http.MethodPatch, noteURL, apperror.Middleware(h.PartiallyUpdateNote))
-	router.HandlerFunc(http.MethodDelete, noteURL, apperror.Middleware(h.DeleteNote))
-	router.HandlerFunc(http.MethodGet, statsURL, apperror.Middleware(h.GetStats))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+notesURL, apperror.Middleware(h.GetNotesByCategory))
+	mux.HandleFunc("GET "+calendarURL, apperror.Middleware(h.GetCalendarNotes))
+	mux.HandleFunc("POST "+notesURL, apperror.Middleware(h.CreateNote))
+	mux.HandleFunc("GET "+noteURL, apperror.Middleware(h.GetNote))
+	mux.HandleFunc("PATCH "+noteURL, apperror.Middleware(h.PartiallyUpdateNote))
+	mux.HandleFunc("DELETE "+noteURL, apperror.Middleware(h.DeleteNote))
+	mux.HandleFunc("GET "+statsURL, apperror.Middleware(h.GetStats))
 }
 
 func (h *Handler) GetCalendarNotes(w http.ResponseWriter, r *http.Request) error {
@@ -78,8 +76,7 @@ func (h *Handler) GetCalendarNotes(w http.ResponseWriter, r *http.Request) error
 }
 
 func (h *Handler) GetNote(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUUID := params.ByName("uuid")
+	noteUUID := r.PathValue("uuid")
 	if noteUUID == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}
@@ -175,8 +172,7 @@ func (h *Handler) CreateNote(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUUID := params.ByName("uuid")
+	noteUUID := r.PathValue("uuid")
 	if noteUUID == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}
@@ -228,8 +224,7 @@ func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) er
 }
 
 func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUUID := params.ByName("uuid")
+	noteUUID := r.PathValue("uuid")
 	if noteUUID == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}

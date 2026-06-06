@@ -28,6 +28,17 @@ type UserAction struct {
 	CreatedAt  int64          `json:"created_at,omitempty"`
 }
 
+type UserSession struct {
+	Uuid             string `json:"uuid,omitempty"`
+	UserUUID         string `json:"user_uuid,omitempty"`
+	RefreshTokenHash string `json:"-"`
+	UserAgent        string `json:"user_agent,omitempty"`
+	IPAddress        string `json:"ip_address,omitempty"`
+	CreatedAt        int64  `json:"created_at,omitempty"`
+	ExpiresAt        int64  `json:"expires_at,omitempty"`
+	LastUsedAt       *int64 `json:"last_used_at,omitempty"`
+}
+
 type CreateUserActionDTO struct {
 	Action     string         `json:"action"`
 	EntityType string         `json:"entity_type"`
@@ -54,4 +65,24 @@ type UpdateUserProfileDTO struct {
 	Email           string `json:"email,omitempty"`
 	CurrentPassword string `json:"current_password,omitempty"`
 	NewPassword     string `json:"new_password,omitempty"`
+}
+
+type CreateUserSessionDTO struct {
+	UserUUID         string `json:"user_uuid"`
+	RefreshTokenHash string `json:"refresh_token_hash"`
+	ExpiresAt        int64  `json:"expires_at"`
+	UserAgent        string `json:"user_agent,omitempty"`
+	IPAddress        string `json:"ip_address,omitempty"`
+}
+
+type RotateUserSessionDTO struct {
+	RefreshTokenHash    string `json:"refresh_token_hash"`
+	NewRefreshTokenHash string `json:"new_refresh_token_hash"`
+	ExpiresAt           int64  `json:"expires_at"`
+	UserAgent           string `json:"user_agent,omitempty"`
+	IPAddress           string `json:"ip_address,omitempty"`
+}
+
+type RevokeUserSessionDTO struct {
+	RefreshTokenHash string `json:"refresh_token_hash"`
 }

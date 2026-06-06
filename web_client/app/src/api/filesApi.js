@@ -1,4 +1,4 @@
-import { API_BASE_URL, authHeaders, readSafeJson, request } from "./http";
+import { authHeaders, request, requestRaw } from "./http";
 
 export function fetchFiles(token, noteId) {
   return request(`/api/notes/${noteId}/files`, { headers: authHeaders(token) });
@@ -25,13 +25,13 @@ export function deleteFile(token, noteId, fileId) {
 }
 
 export async function downloadFile(token, noteId, fileId) {
-  const response = await fetch(`${API_BASE_URL}/api/notes/${noteId}/files/${fileId}`, {
+  const response = await requestRaw(`/api/notes/${noteId}/files/${fileId}`, {
     headers: authHeaders(token, "*/*"),
   });
 
   if (!response.ok) {
-    const errorData = await readSafeJson(response);
-    throw new Error(errorData?.message || "Не удалось скачать файл.");
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.message || "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ С„Р°Р№Р».");
   }
 
   return response.blob();

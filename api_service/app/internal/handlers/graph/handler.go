@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/julienschmidt/httprouter"
-
 	"myproject/internal/apperror"
 	categoryclient "myproject/internal/client/category"
 	"myproject/pkg/logging"
@@ -23,10 +21,10 @@ type Handler struct {
 	CategoryService categoryclient.CategoryService
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, graphURL, jwt.JWTMiddleware(apperror.Middleware(h.GetGraph)))
-	router.HandlerFunc(http.MethodPost, graphLinksURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateUserGraphLink)))
-	router.HandlerFunc(http.MethodDelete, graphLinksURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteUserGraphLink)))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+graphURL, jwt.JWTMiddleware(apperror.Middleware(h.GetGraph)))
+	mux.HandleFunc(http.MethodPost+" "+graphLinksURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateUserGraphLink)))
+	mux.HandleFunc(http.MethodDelete+" "+graphLinksURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteUserGraphLink)))
 }
 
 func (h *Handler) GetGraph(w http.ResponseWriter, r *http.Request) error {

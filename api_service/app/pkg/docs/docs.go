@@ -3,8 +3,6 @@ package docs
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 const (
@@ -13,9 +11,9 @@ const (
 )
 
 // Register exposes a minimal Swagger UI and an OpenAPI schema for api_service.
-func Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, swaggerURL, serveSwaggerUI)
-	router.HandlerFunc(http.MethodGet, openapiURL, serveOpenAPI)
+func Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+swaggerURL, serveSwaggerUI)
+	mux.HandleFunc(http.MethodGet+" "+openapiURL, serveOpenAPI)
 }
 
 func serveSwaggerUI(w http.ResponseWriter, _ *http.Request) {
@@ -103,6 +101,16 @@ func openAPISpec() map[string]any {
 						"201": jsonResponse("Refreshed access and refresh tokens", schemaRef("TokenResponse")),
 						"400": errorResponse(),
 						"401": errorResponse(),
+					},
+				},
+				"delete": map[string]any{
+					"tags":        []string{"auth"},
+					"summary":     "Logout and revoke current refresh session",
+					"operationId": "logout",
+					"requestBody": jsonBody(schemaRef("RefreshRequest"), true),
+					"responses": map[string]any{
+						"204": noContentResponse("Refresh session revoked"),
+						"400": errorResponse(),
 					},
 				},
 			},

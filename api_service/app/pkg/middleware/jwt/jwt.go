@@ -3,6 +3,8 @@ package jwt
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"myproject/internal/apperror"
 	"myproject/internal/config"
 	"myproject/pkg/logging"
 	"net/http"
@@ -24,8 +26,7 @@ func JWTMiddleware(h http.HandlerFunc) http.HandlerFunc {
 		authHeader := strings.Split(r.Header.Get("Authorization"), "Bearer ")
 		if len(authHeader) != 2 {
 			logger.Error("malformed token")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("malformed token"))
+			writeUnauthorized(w, "malformed token")
 			return
 		}
 
@@ -55,8 +56,8 @@ func JWTMiddleware(h http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if valid := uc.IsValidAt(time.Now()); !valid {
-			logger.Error("token has been expired")
-			unauthorized(w, err)
+			logger.Error("token has expired")
+			unauthorized(w, errors.New("token has expired"))
 			return
 		}
 
@@ -68,6 +69,16 @@ func JWTMiddleware(h http.HandlerFunc) http.HandlerFunc {
 
 func unauthorized(w http.ResponseWriter, err error) {
 	logging.GetLogger().Error(err)
+	writeUnauthorized(w, "unauthorized")
+}
+
+func writeUnauthorized(w http.ResponseWriter, message string) {
+	appErr := apperror.UnauthorizedError(message).(*apperror.AppError)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	w.Write([]byte("unauthorized"))
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"code":              appErr.ErrorCode,
+		"message":           appErr.Message,
+		"developer_message": appErr.DeveloperMessage,
+	})
 }

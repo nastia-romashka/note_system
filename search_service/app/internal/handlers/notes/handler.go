@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/julienschmidt/httprouter"
-
 	"search_service/internal/apperror"
 	"search_service/pkg/logging"
 )
@@ -15,7 +13,7 @@ import (
 const (
 	searchNotesURL = "/api/search/notes"
 	indexNotesURL  = "/api/index/notes"
-	indexNoteURL   = "/api/index/notes/:uuid"
+	indexNoteURL   = "/api/index/notes/{uuid}"
 	importNotesURL = "/api/index/notes/import"
 )
 
@@ -32,12 +30,12 @@ type Handler struct {
 	NoteService NoteService
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, searchNotesURL, apperror.Middleware(h.SearchNotes))
-	router.HandlerFunc(http.MethodPost, indexNotesURL, apperror.Middleware(h.UpsertNote))
-	router.HandlerFunc(http.MethodDelete, indexNotesURL, apperror.Middleware(h.DeleteNotesByUser))
-	router.HandlerFunc(http.MethodPost, importNotesURL, apperror.Middleware(h.UpsertNotes))
-	router.HandlerFunc(http.MethodDelete, indexNoteURL, apperror.Middleware(h.DeleteNote))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+searchNotesURL, apperror.Middleware(h.SearchNotes))
+	mux.HandleFunc("POST "+indexNotesURL, apperror.Middleware(h.UpsertNote))
+	mux.HandleFunc("DELETE "+indexNotesURL, apperror.Middleware(h.DeleteNotesByUser))
+	mux.HandleFunc("POST "+importNotesURL, apperror.Middleware(h.UpsertNotes))
+	mux.HandleFunc("DELETE "+indexNoteURL, apperror.Middleware(h.DeleteNote))
 }
 
 func (h *Handler) SearchNotes(w http.ResponseWriter, r *http.Request) error {
@@ -106,8 +104,7 @@ func (h *Handler) UpsertNotes(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUUID := params.ByName("uuid")
+	noteUUID := r.PathValue("uuid")
 	if noteUUID == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}

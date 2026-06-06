@@ -154,13 +154,13 @@ func (s *service) Authenticate(dto handlermodel.AuthUserDTO) (user handlermodel.
 	user, err = s.storage.FindByUsername(dto.Username)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
-			return handlermodel.User{}, apperror.NotFoundError("user not found")
+			return handlermodel.User{}, apperror.UnauthorizedError("invalid credentials")
 		}
 		return handlermodel.User{}, fmt.Errorf("find user by username: %w", err)
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(dto.Password)); err != nil {
-		return handlermodel.User{}, apperror.BadRequestError("invalid credentials")
+		return handlermodel.User{}, apperror.UnauthorizedError("invalid credentials")
 	}
 
 	if err = s.storage.UpdateLastLogin(user.Uuid); err != nil {
@@ -236,4 +236,76 @@ func (s *service) GetActions(userUUID string, limit, offset int) (actions []hand
 	}
 
 	return actions, nil
+}
+
+func (s *service) CreateSession(dto handlermodel.CreateUserSessionDTO) error {
+	dto.UserUUID = strings.TrimSpace(dto.UserUUID)
+	dto.RefreshTokenHash = strings.TrimSpace(dto.RefreshTokenHash)
+	dto.UserAgent = strings.TrimSpace(dto.UserAgent)
+	dto.IPAddress = strings.TrimSpace(dto.IPAddress)
+
+	if dto.UserUUID == "" {
+		return apperror.BadRequestError("user_uuid is required")
+	}
+	if dto.RefreshTokenHash == "" {
+		return apperror.BadRequestError("refresh_token_hash is required")
+	}
+	if dto.ExpiresAt <= 0 {
+		return apperror.BadRequestError("expires_at is required")
+	}
+
+	if err := s.storage.CreateSession(dto); err != nil {
+		if errors.Is(err, apperror.ErrNotFound) || errors.Is(err, apperror.ErrUnauthorized) {
+			return err
+		}
+		return fmt.Errorf("create user session: %w", err)
+	}
+
+	return nil
+}
+
+func (s *service) RotateSession(dto handlermodel.RotateUserSessionDTO) (handlermodel.UserSession, error) {
+	dto.RefreshTokenHash = strings.TrimSpace(dto.RefreshTokenHash)
+	dto.NewRefreshTokenHash = strings.TrimSpace(dto.NewRefreshTokenHash)
+	dto.UserAgent = strings.TrimSpace(dto.UserAgent)
+	dto.IPAddress = strings.TrimSpace(dto.IPAddress)
+
+	if dto.RefreshTokenHash == "" {
+		return handlermodel.UserSession{}, apperror.BadRequestError("refresh_token_hash is required")
+	}
+	if dto.NewRefreshTokenHash == "" {
+		return handlermodel.UserSession{}, apperror.BadRequestError("new_refresh_token_hash is required")
+	}
+	if dto.RefreshTokenHash == dto.NewRefreshTokenHash {
+		return handlermodel.UserSession{}, apperror.BadRequestError("refresh token rotation requires a new token")
+	}
+	if dto.ExpiresAt <= 0 {
+		return handlermodel.UserSession{}, apperror.BadRequestError("expires_at is required")
+	}
+
+	session, err := s.storage.RotateSession(dto)
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) || errors.Is(err, apperror.ErrUnauthorized) {
+			return handlermodel.UserSession{}, err
+		}
+		return handlermodel.UserSession{}, fmt.Errorf("rotate user session: %w", err)
+	}
+
+	return session, nil
+}
+
+func (s *service) RevokeSession(refreshTokenHash string) error {
+	refreshTokenHash = strings.TrimSpace(refreshTokenHash)
+	if refreshTokenHash == "" {
+		return apperror.BadRequestError("refresh_token_hash is required")
+	}
+
+	if err := s.storage.RevokeSession(refreshTokenHash); err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			return err
+		}
+		return fmt.Errorf("revoke user session: %w", err)
+	}
+
+	return nil
 }

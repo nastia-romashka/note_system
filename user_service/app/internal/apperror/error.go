@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("not found")
+	ErrNotFound     = errors.New("not found")
+	ErrUnauthorized = errors.New("unauthorized")
 )
 
 type AppError struct {
@@ -73,4 +74,12 @@ func NotFoundError(message string) error {
 	}
 
 	return New(ErrNotFound, "US-40400", message, message)
+}
+
+func UnauthorizedError(message string) error {
+	if message == "" {
+		message = "unauthorized"
+	}
+
+	return New(ErrUnauthorized, "US-40100", message, message)
 }

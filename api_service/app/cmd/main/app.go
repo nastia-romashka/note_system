@@ -18,14 +18,10 @@ import (
 	searchhandler "myproject/internal/handlers/search"
 	"myproject/internal/handlers/tags"
 
+	"myproject/internal/config"
 	"myproject/pkg/docs"
 	"myproject/pkg/handlers/metric"
 	"myproject/pkg/logging"
-
-	"github.com/julienschmidt/httprouter"
-
-	"myproject/internal/config"
-	"myproject/pkg/cache/freecache"
 	"myproject/pkg/shutdown"
 
 	"net"
@@ -39,24 +35,21 @@ import (
 func main() {
 	logging.Init()
 	logger := logging.GetLogger()
-	logger.Println("Logger инициализирован")
+	logger.Println("logger initialized")
 
-	logger.Println("config инициализирован")
+	logger.Println("config initialized")
 	cfg := config.GetConfig()
 
-	logger.Println("router инициализирован")
-	router := httprouter.New()
-	router.HandlerFunc(http.MethodGet, "/health", func(w http.ResponseWriter, _ *http.Request) {
+	logger.Println("router initialized")
+	router := http.NewServeMux()
+	router.HandleFunc(http.MethodGet+" /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"api_service"}`))
 	})
 	docs.Register(router)
 
-	logger.Println("cache инициализирован")
-	refreshTokenCache := freecache.NewCacheRepo(104857600)
-
-	logger.Println("create and regiser handlers")
+	logger.Println("create and register handlers")
 	userService := userclient.NewService(
 		cfg.UserService.URL,
 		"users",
@@ -67,7 +60,6 @@ func main() {
 		UserService: userService,
 	}
 	authHandler := auth.Handler{
-		RTCache:     refreshTokenCache,
 		Logger:      logger,
 		UserService: userService,
 	}
@@ -101,6 +93,7 @@ func main() {
 		"files",
 		logger,
 	)
+
 	profileHandler.NoteService = noteService
 	categoriesHandler := categories.Handler{
 		Logger:          logger,
@@ -111,11 +104,13 @@ func main() {
 		ActionRecorder:  actionRecorder,
 	}
 	categoriesHandler.Register(router)
+
 	graphHandler := graph.Handler{
 		Logger:          logger,
 		CategoryService: categoryService,
 	}
 	graphHandler.Register(router)
+
 	notesHandler := notes.Handler{
 		Logger:          logger,
 		CategoryService: categoryService,
@@ -132,6 +127,7 @@ func main() {
 		ActionRecorder: actionRecorder,
 	}
 	tagsHandler.Register(router)
+
 	profileHandler.FileService = fileService
 	profileHandler.Register(router)
 
@@ -155,7 +151,7 @@ func main() {
 	start(router, logger, cfg)
 }
 
-func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config) {
+func start(handler http.Handler, logger logging.Logger, cfg *config.Config) {
 	var server *http.Server
 	var listener net.Listener
 
@@ -177,7 +173,6 @@ func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config)
 		logger.Infof("bind application to host: %s and port: %s", cfg.Listen.BindIP, cfg.Listen.Port)
 
 		var err error
-
 		listener, err = net.Listen("tcp", fmt.Sprintf("%s:%s", cfg.Listen.BindIP, cfg.Listen.Port))
 		if err != nil {
 			logger.Fatal(err)
@@ -185,7 +180,7 @@ func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config)
 	}
 
 	server = &http.Server{
-		Handler:      router,
+		Handler:      handler,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}

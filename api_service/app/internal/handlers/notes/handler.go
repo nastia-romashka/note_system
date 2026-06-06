@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/julienschmidt/httprouter"
-
 	"myproject/internal/apperror"
 	categoryclient "myproject/internal/client/category"
 	fileclient "myproject/internal/client/file"
@@ -23,9 +21,9 @@ import (
 
 const (
 	notesURL         = "/api/notes"
-	noteURL          = "/api/notes/:uuid"
-	noteDuplicateURL = "/api/notes/:uuid/duplicate"
-	noteLinkURL      = "/api/notes/:uuid/links/:target_uuid"
+	noteURL          = "/api/notes/{uuid}"
+	noteDuplicateURL = "/api/notes/{uuid}/duplicate"
+	noteLinkURL      = "/api/notes/{uuid}/links/{target_uuid}"
 	calendarURL      = "/api/calendar"
 )
 
@@ -62,16 +60,16 @@ type noteFile struct {
 	ContentType string `json:"content_type"`
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, notesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetNotes)))
-	router.HandlerFunc(http.MethodGet, calendarURL, jwt.JWTMiddleware(apperror.Middleware(h.GetCalendarNotes)))
-	router.HandlerFunc(http.MethodPost, notesURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateNote)))
-	router.HandlerFunc(http.MethodGet, noteURL, jwt.JWTMiddleware(apperror.Middleware(h.GetNoteByUuid)))
-	router.HandlerFunc(http.MethodPost, noteDuplicateURL, jwt.JWTMiddleware(apperror.Middleware(h.DuplicateNote)))
-	router.HandlerFunc(http.MethodPatch, noteURL, jwt.JWTMiddleware(apperror.Middleware(h.PartiallyUpdateNote)))
-	router.HandlerFunc(http.MethodDelete, noteURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteNote)))
-	router.HandlerFunc(http.MethodPost, noteLinkURL, jwt.JWTMiddleware(apperror.Middleware(h.LinkNotes)))
-	router.HandlerFunc(http.MethodDelete, noteLinkURL, jwt.JWTMiddleware(apperror.Middleware(h.UnlinkNotes)))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+notesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetNotes)))
+	mux.HandleFunc(http.MethodGet+" "+calendarURL, jwt.JWTMiddleware(apperror.Middleware(h.GetCalendarNotes)))
+	mux.HandleFunc(http.MethodPost+" "+notesURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateNote)))
+	mux.HandleFunc(http.MethodGet+" "+noteURL, jwt.JWTMiddleware(apperror.Middleware(h.GetNoteByUuid)))
+	mux.HandleFunc(http.MethodPost+" "+noteDuplicateURL, jwt.JWTMiddleware(apperror.Middleware(h.DuplicateNote)))
+	mux.HandleFunc(http.MethodPatch+" "+noteURL, jwt.JWTMiddleware(apperror.Middleware(h.PartiallyUpdateNote)))
+	mux.HandleFunc(http.MethodDelete+" "+noteURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteNote)))
+	mux.HandleFunc(http.MethodPost+" "+noteLinkURL, jwt.JWTMiddleware(apperror.Middleware(h.LinkNotes)))
+	mux.HandleFunc(http.MethodDelete+" "+noteLinkURL, jwt.JWTMiddleware(apperror.Middleware(h.UnlinkNotes)))
 }
 
 func (h *Handler) GetCalendarNotes(w http.ResponseWriter, r *http.Request) error {
@@ -158,8 +156,7 @@ func (h *Handler) CreateNote(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) GetNoteByUuid(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUuid := params.ByName("uuid")
+	noteUuid := r.PathValue("uuid")
 	if noteUuid == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}
@@ -180,8 +177,7 @@ func (h *Handler) GetNoteByUuid(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) DuplicateNote(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	sourceNoteUUID := params.ByName("uuid")
+	sourceNoteUUID := r.PathValue("uuid")
 	if sourceNoteUUID == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}
@@ -265,8 +261,7 @@ func (h *Handler) DuplicateNote(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUuid := params.ByName("uuid")
+	noteUuid := r.PathValue("uuid")
 	if noteUuid == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}
@@ -302,8 +297,7 @@ func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) er
 }
 
 func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUuid := params.ByName("uuid")
+	noteUuid := r.PathValue("uuid")
 	if noteUuid == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}
@@ -329,9 +323,8 @@ func (h *Handler) LinkNotes(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	sourceNoteUuid := params.ByName("uuid")
-	targetNoteUuid := params.ByName("target_uuid")
+	sourceNoteUuid := r.PathValue("uuid")
+	targetNoteUuid := r.PathValue("target_uuid")
 	if sourceNoteUuid == "" || targetNoteUuid == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}
@@ -350,9 +343,8 @@ func (h *Handler) UnlinkNotes(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	sourceNoteUuid := params.ByName("uuid")
-	targetNoteUuid := params.ByName("target_uuid")
+	sourceNoteUuid := r.PathValue("uuid")
+	targetNoteUuid := r.PathValue("target_uuid")
 	if sourceNoteUuid == "" || targetNoteUuid == "" {
 		return apperror.BadRequestError("empty note uuid")
 	}

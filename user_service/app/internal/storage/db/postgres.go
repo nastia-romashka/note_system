@@ -45,6 +45,23 @@ const (
 		WHERE id = $1 AND is_active = true
 		LIMIT 1
 	`
+
+	findActiveSessionByRefreshTokenHashQuery = `
+		SELECT
+			id::text,
+			user_id::text,
+			refresh_token_hash,
+			COALESCE(user_agent, ''),
+			COALESCE(ip_address::text, ''),
+			created_at,
+			expires_at,
+			last_used_at
+		FROM user_sessions
+		WHERE refresh_token_hash = $1
+			AND revoked_at IS NULL
+			AND (expires_at IS NULL OR expires_at > now())
+		LIMIT 1
+	`
 )
 
 func NewStorage(cfg *config.Config) (storage *Storage, err error) {
@@ -370,6 +387,163 @@ func (s *Storage) FindActions(userUUID string, limit, offset int) (actions []han
 	return actions, nil
 }
 
+func (s *Storage) CreateSession(dto handlermodel.CreateUserSessionDTO) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := s.pool.Exec(
+		ctx,
+		`
+			INSERT INTO user_sessions (
+				user_id,
+				refresh_token_hash,
+				user_agent,
+				ip_address,
+				expires_at
+			)
+			VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, '')::inet, to_timestamp($5))
+		`,
+		dto.UserUUID,
+		dto.RefreshTokenHash,
+		dto.UserAgent,
+		dto.IPAddress,
+		dto.ExpiresAt,
+	)
+	if err != nil {
+		if isPostgresCode(err, "22P02") {
+			return apperror.BadRequestError("invalid user uuid or ip address")
+		}
+		if isPostgresCode(err, "23503") {
+			return apperror.NotFoundError("user not found")
+		}
+		if isPostgresCode(err, "23505") {
+			return apperror.BadRequestError("refresh session already exists")
+		}
+		return fmt.Errorf("insert user session: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) RotateSession(dto handlermodel.RotateUserSessionDTO) (handlermodel.UserSession, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return handlermodel.UserSession{}, fmt.Errorf("begin rotate session transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	currentSession, err := findSessionForUpdate(ctx, tx, dto.RefreshTokenHash)
+	if err != nil {
+		return handlermodel.UserSession{}, err
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`
+			UPDATE user_sessions
+			SET revoked_at = now(), last_used_at = now()
+			WHERE id = $1
+		`,
+		currentSession.Uuid,
+	)
+	if err != nil {
+		return handlermodel.UserSession{}, fmt.Errorf("revoke current session: %w", err)
+	}
+
+	var newSession handlermodel.UserSession
+	var createdAt time.Time
+	var expiresAt sql.NullTime
+	var lastUsedAt sql.NullTime
+	err = tx.QueryRow(
+		ctx,
+		`
+			INSERT INTO user_sessions (
+				user_id,
+				refresh_token_hash,
+				user_agent,
+				ip_address,
+				expires_at,
+				last_used_at
+			)
+			VALUES (
+				$1,
+				$2,
+				NULLIF($3, ''),
+				NULLIF($4, '')::inet,
+				to_timestamp($5),
+				now()
+			)
+			RETURNING id::text, user_id::text, COALESCE(user_agent, ''), COALESCE(ip_address::text, ''), created_at, expires_at, last_used_at
+		`,
+		currentSession.UserUUID,
+		dto.NewRefreshTokenHash,
+		dto.UserAgent,
+		dto.IPAddress,
+		dto.ExpiresAt,
+	).Scan(
+		&newSession.Uuid,
+		&newSession.UserUUID,
+		&newSession.UserAgent,
+		&newSession.IPAddress,
+		&createdAt,
+		&expiresAt,
+		&lastUsedAt,
+	)
+	if err != nil {
+		if isPostgresCode(err, "22P02") {
+			return handlermodel.UserSession{}, apperror.BadRequestError("invalid ip address")
+		}
+		if isPostgresCode(err, "23505") {
+			return handlermodel.UserSession{}, apperror.BadRequestError("refresh session already exists")
+		}
+		return handlermodel.UserSession{}, fmt.Errorf("insert rotated user session: %w", err)
+	}
+
+	newSession.CreatedAt = createdAt.Unix()
+	if expiresAt.Valid {
+		newSession.ExpiresAt = expiresAt.Time.Unix()
+	}
+	if lastUsedAt.Valid {
+		value := lastUsedAt.Time.Unix()
+		newSession.LastUsedAt = &value
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return handlermodel.UserSession{}, fmt.Errorf("commit rotate session transaction: %w", err)
+	}
+
+	return newSession, nil
+}
+
+func (s *Storage) RevokeSession(refreshTokenHash string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := s.pool.Exec(
+		ctx,
+		`
+			UPDATE user_sessions
+			SET revoked_at = now(), last_used_at = now()
+			WHERE refresh_token_hash = $1 AND revoked_at IS NULL
+		`,
+		refreshTokenHash,
+	)
+	if err != nil {
+		return fmt.Errorf("revoke user session: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return apperror.NotFoundError("session not found")
+	}
+
+	return nil
+}
+
 func (s *Storage) findOne(query string, arg any) (user handlermodel.User, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -394,6 +568,45 @@ func (s *Storage) findOne(query string, arg any) (user handlermodel.User, err er
 
 	user.CreatedDate = createdAt.Unix()
 	return user, nil
+}
+
+func findSessionForUpdate(ctx context.Context, tx pgx.Tx, refreshTokenHash string) (handlermodel.UserSession, error) {
+	var session handlermodel.UserSession
+	var createdAt time.Time
+	var expiresAt sql.NullTime
+	var lastUsedAt sql.NullTime
+
+	err := tx.QueryRow(
+		ctx,
+		findActiveSessionByRefreshTokenHashQuery+` FOR UPDATE`,
+		refreshTokenHash,
+	).Scan(
+		&session.Uuid,
+		&session.UserUUID,
+		&session.RefreshTokenHash,
+		&session.UserAgent,
+		&session.IPAddress,
+		&createdAt,
+		&expiresAt,
+		&lastUsedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return handlermodel.UserSession{}, apperror.NotFoundError("session not found")
+		}
+		return handlermodel.UserSession{}, fmt.Errorf("find session: %w", err)
+	}
+
+	session.CreatedAt = createdAt.Unix()
+	if expiresAt.Valid {
+		session.ExpiresAt = expiresAt.Time.Unix()
+	}
+	if lastUsedAt.Valid {
+		value := lastUsedAt.Time.Unix()
+		session.LastUsedAt = &value
+	}
+
+	return session, nil
 }
 
 func postgresDSN(cfg *config.Config) string {

@@ -50,6 +50,18 @@ func Middleware(next func(http.ResponseWriter, *http.Request) error) http.Handle
 			return
 		}
 
+		if errors.Is(appErr, ErrUnauthorized) {
+			logger.Warn(
+				"request failed with unauthorized",
+				"status_code", http.StatusUnauthorized,
+				"code", appErr.Code,
+				"message", appErr.Message,
+			)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write(appErr.Marshal())
+			return
+		}
+
 		logger.Warn(
 			"request failed with app error",
 			"status_code", http.StatusBadRequest,

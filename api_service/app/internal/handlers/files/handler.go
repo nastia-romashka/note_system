@@ -8,8 +8,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/julienschmidt/httprouter"
-
 	"myproject/internal/apperror"
 	fileclient "myproject/internal/client/file"
 	noteclient "myproject/internal/client/note"
@@ -19,8 +17,8 @@ import (
 )
 
 const (
-	noteFilesURL = "/api/notes/:uuid/files"
-	noteFileURL  = "/api/notes/:uuid/files/:fileId"
+	noteFilesURL = "/api/notes/{uuid}/files"
+	noteFileURL  = "/api/notes/{uuid}/files/{fileId}"
 )
 
 type Handler struct {
@@ -30,11 +28,11 @@ type Handler struct {
 	ActionRecorder actionlog.Recorder
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, noteFilesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetFilesByNote)))
-	router.HandlerFunc(http.MethodPost, noteFilesURL, jwt.JWTMiddleware(apperror.Middleware(h.UploadFileToNote)))
-	router.HandlerFunc(http.MethodGet, noteFileURL, jwt.JWTMiddleware(apperror.Middleware(h.DownloadNoteFile)))
-	router.HandlerFunc(http.MethodDelete, noteFileURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteNoteFile)))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+noteFilesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetFilesByNote)))
+	mux.HandleFunc(http.MethodPost+" "+noteFilesURL, jwt.JWTMiddleware(apperror.Middleware(h.UploadFileToNote)))
+	mux.HandleFunc(http.MethodGet+" "+noteFileURL, jwt.JWTMiddleware(apperror.Middleware(h.DownloadNoteFile)))
+	mux.HandleFunc(http.MethodDelete+" "+noteFileURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteNoteFile)))
 }
 
 func (h *Handler) GetFilesByNote(w http.ResponseWriter, r *http.Request) error {
@@ -199,8 +197,7 @@ func (h *Handler) DeleteNoteFile(w http.ResponseWriter, r *http.Request) error {
 }
 
 func getNoteUUID(r *http.Request) (string, error) {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	noteUUID := strings.TrimSpace(params.ByName("uuid"))
+	noteUUID := strings.TrimSpace(r.PathValue("uuid"))
 	if noteUUID == "" {
 		return "", apperror.BadRequestError("empty note uuid")
 	}
@@ -209,8 +206,7 @@ func getNoteUUID(r *http.Request) (string, error) {
 }
 
 func getFileID(r *http.Request) (string, error) {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	fileID := strings.TrimSpace(params.ByName("fileId"))
+	fileID := strings.TrimSpace(r.PathValue("fileId"))
 	if fileID == "" {
 		return "", apperror.BadRequestError("empty file id")
 	}

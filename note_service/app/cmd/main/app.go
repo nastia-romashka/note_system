@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/julienschmidt/httprouter"
-
 	"note_service/internal/config"
 	handlers "note_service/internal/handlers/notes"
 	taghandlers "note_service/internal/handlers/tags"
@@ -33,8 +31,8 @@ func main() {
 		logger.Fatal("failed to initialize storage", "error", err)
 	}
 
-	router := httprouter.New()
-	router.HandlerFunc(http.MethodGet, "/health", func(w http.ResponseWriter, _ *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"note_service"}`))
@@ -44,18 +42,18 @@ func main() {
 		Logger:      logger,
 		NoteService: noteservice.NewService(storage),
 	}
-	noteHandler.Register(router)
+	noteHandler.Register(mux)
 
 	tagHandler := taghandlers.Handler{
 		Logger:     logger,
 		TagService: tagservice.NewService(storage),
 	}
-	tagHandler.Register(router)
+	tagHandler.Register(mux)
 
-	start(router, logger, cfg)
+	start(mux, logger, cfg)
 }
 
-func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config) {
+func start(handler http.Handler, logger logging.Logger, cfg *config.Config) {
 	var server *http.Server
 	var listener net.Listener
 
@@ -81,7 +79,7 @@ func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config)
 	}
 
 	server = &http.Server{
-		Handler:      router,
+		Handler:      handler,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}

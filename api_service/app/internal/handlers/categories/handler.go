@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/julienschmidt/httprouter"
-
 	"myproject/internal/apperror"
 	categoryclient "myproject/internal/client/category"
 	fileclient "myproject/internal/client/file"
@@ -20,7 +18,7 @@ import (
 
 const (
 	categoriesURL = "/api/categories"
-	categoryURL   = "/api/categories/:uuid"
+	categoryURL   = "/api/categories/{uuid}"
 )
 
 type Handler struct {
@@ -36,11 +34,11 @@ type noteFile struct {
 	ID string `json:"id"`
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, categoriesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetCategories)))
-	router.HandlerFunc(http.MethodPost, categoriesURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateCategory)))
-	router.HandlerFunc(http.MethodPatch, categoryURL, jwt.JWTMiddleware(apperror.Middleware(h.PartiallyUpdateCategory)))
-	router.HandlerFunc(http.MethodDelete, categoryURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteCategory)))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+categoriesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetCategories)))
+	mux.HandleFunc(http.MethodPost+" "+categoriesURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateCategory)))
+	mux.HandleFunc(http.MethodPatch+" "+categoryURL, jwt.JWTMiddleware(apperror.Middleware(h.PartiallyUpdateCategory)))
+	mux.HandleFunc(http.MethodDelete+" "+categoryURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteCategory)))
 }
 
 func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) error {
@@ -100,8 +98,7 @@ func (h *Handler) PartiallyUpdateCategory(w http.ResponseWriter, r *http.Request
 		return err
 	}
 
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	categoryUuid := params.ByName("uuid")
+	categoryUuid := r.PathValue("uuid")
 
 	var categoryDTO categoryclient.UpdateCategoryDTO
 	defer r.Body.Close()
@@ -128,9 +125,8 @@ func (h *Handler) DeleteCategory(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
 	categoryDTO := categoryclient.DeleteCategoryDTO{
-		Uuid:     params.ByName("uuid"),
+		Uuid:     r.PathValue("uuid"),
 		UserUuid: userUuid,
 	}
 

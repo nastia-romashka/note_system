@@ -6,8 +6,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/julienschmidt/httprouter"
-
 	"file_service/internal/apperror"
 	domainfile "file_service/internal/file"
 	"file_service/pkg/logging"
@@ -15,7 +13,7 @@ import (
 
 const (
 	filesURL = "/api/files"
-	fileURL  = "/api/files/:id"
+	fileURL  = "/api/files/{id}"
 	statsURL = "/api/stats"
 )
 
@@ -33,12 +31,12 @@ type Handler struct {
 	FileService        FileService
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, fileURL, apperror.Middleware(h.GetFile))
-	router.HandlerFunc(http.MethodGet, filesURL, apperror.Middleware(h.GetFilesByNoteUUID))
-	router.HandlerFunc(http.MethodPost, filesURL, apperror.Middleware(h.CreateFile))
-	router.HandlerFunc(http.MethodDelete, fileURL, apperror.Middleware(h.DeleteFile))
-	router.HandlerFunc(http.MethodGet, statsURL, apperror.Middleware(h.GetStats))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+fileURL, apperror.Middleware(h.GetFile))
+	mux.HandleFunc("GET "+filesURL, apperror.Middleware(h.GetFilesByNoteUUID))
+	mux.HandleFunc("POST "+filesURL, apperror.Middleware(h.CreateFile))
+	mux.HandleFunc("DELETE "+fileURL, apperror.Middleware(h.DeleteFile))
+	mux.HandleFunc("GET "+statsURL, apperror.Middleware(h.GetStats))
 }
 
 func (h *Handler) GetFile(w http.ResponseWriter, r *http.Request) error {
@@ -51,8 +49,7 @@ func (h *Handler) GetFile(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	fileID := params.ByName("id")
+	fileID := r.PathValue("id")
 	if fileID == "" {
 		return apperror.BadRequestError("file id is required")
 	}
@@ -189,8 +186,7 @@ func (h *Handler) CreateFile(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	fileID := params.ByName("id")
+	fileID := r.PathValue("id")
 	if fileID == "" {
 		return apperror.BadRequestError("file id is required")
 	}

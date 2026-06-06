@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/julienschmidt/httprouter"
-
 	"myproject/internal/apperror"
 	noteclient "myproject/internal/client/note"
 	"myproject/internal/handlers/actionlog"
@@ -16,7 +14,7 @@ import (
 
 const (
 	tagsURL = "/api/tags"
-	tagURL  = "/api/tags/:uuid"
+	tagURL  = "/api/tags/{uuid}"
 )
 
 type Handler struct {
@@ -25,10 +23,10 @@ type Handler struct {
 	ActionRecorder actionlog.Recorder
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, tagsURL, jwt.JWTMiddleware(apperror.Middleware(h.GetTags)))
-	router.HandlerFunc(http.MethodPost, tagsURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateTag)))
-	router.HandlerFunc(http.MethodDelete, tagURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteTag)))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+tagsURL, jwt.JWTMiddleware(apperror.Middleware(h.GetTags)))
+	mux.HandleFunc(http.MethodPost+" "+tagsURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateTag)))
+	mux.HandleFunc(http.MethodDelete+" "+tagURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteTag)))
 }
 
 func (h *Handler) GetTags(w http.ResponseWriter, r *http.Request) error {
@@ -75,8 +73,7 @@ func (h *Handler) CreateTag(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) DeleteTag(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	tagUuid := params.ByName("uuid")
+	tagUuid := r.PathValue("uuid")
 	if tagUuid == "" {
 		return apperror.BadRequestError("empty tag uuid")
 	}

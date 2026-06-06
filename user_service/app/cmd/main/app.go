@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/julienschmidt/httprouter"
-
 	"user_service/internal/config"
 	userhandlers "user_service/internal/handlers/users"
 	userservice "user_service/internal/service/users"
@@ -32,8 +30,8 @@ func main() {
 	}
 	defer storage.Close()
 
-	router := httprouter.New()
-	router.HandlerFunc(http.MethodGet, "/health", func(w http.ResponseWriter, _ *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"user_service"}`))
@@ -43,12 +41,12 @@ func main() {
 		Logger:      logger,
 		UserService: userservice.NewService(storage),
 	}
-	userHandler.Register(router)
+	userHandler.Register(mux)
 
-	start(router, logger, cfg)
+	start(mux, logger, cfg)
 }
 
-func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config) {
+func start(handler http.Handler, logger logging.Logger, cfg *config.Config) {
 	var server *http.Server
 	var listener net.Listener
 
@@ -74,7 +72,7 @@ func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config)
 	}
 
 	server = &http.Server{
-		Handler:      router,
+		Handler:      handler,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}

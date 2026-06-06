@@ -42,6 +42,9 @@ type UserService interface {
 	GetActions(ctx context.Context, uuid string, limit, offset int) ([]UserAction, error)
 	CreateAction(ctx context.Context, uuid string, dto CreateUserActionDTO) error
 	Authenticate(ctx context.Context, dto AuthUserDTO) (User, error)
+	CreateSession(ctx context.Context, dto CreateUserSessionDTO) error
+	RotateSession(ctx context.Context, dto RotateUserSessionDTO) (UserSession, error)
+	RevokeSession(ctx context.Context, refreshTokenHash string) error
 }
 
 func (c *client) CreateUser(ctx context.Context, dto CreateUserDTO) (string, error) {
@@ -334,6 +337,131 @@ func (c *client) Authenticate(ctx context.Context, dto AuthUserDTO) (user User, 
 	}
 
 	return user, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) CreateSession(ctx context.Context, dto CreateUserSessionDTO) error {
+	uri, err := c.base.BuildURL("user-sessions", nil)
+	if err != nil {
+		return fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(dto)
+	if err != nil {
+		return fmt.Errorf("failed to marshal dto: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, uri, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		if response.Body() != nil {
+			_ = response.Body().Close()
+		}
+		return nil
+	}
+
+	return apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) RotateSession(ctx context.Context, dto RotateUserSessionDTO) (session UserSession, err error) {
+	uri, err := c.base.BuildURL("user-sessions/rotate", nil)
+	if err != nil {
+		return session, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(dto)
+	if err != nil {
+		return session, fmt.Errorf("failed to marshal dto: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, uri, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return session, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return session, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return session, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &session); err != nil {
+			return session, fmt.Errorf("failed to unmarshal user session: %w", err)
+		}
+		return session, nil
+	}
+
+	return session, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) RevokeSession(ctx context.Context, refreshTokenHash string) error {
+	uri, err := c.base.BuildURL("user-sessions/revoke", nil)
+	if err != nil {
+		return fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(RevokeUserSessionDTO{RefreshTokenHash: refreshTokenHash})
+	if err != nil {
+		return fmt.Errorf("failed to marshal dto: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, uri, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		if response.Body() != nil {
+			_ = response.Body().Close()
+		}
+		return nil
+	}
+
+	return apperror.APIError(
 		response.StatusCode(),
 		response.Error.ErrorCode,
 		response.Error.Message,

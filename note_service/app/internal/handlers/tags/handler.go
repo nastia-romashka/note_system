@@ -5,15 +5,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/julienschmidt/httprouter"
-
 	"note_service/internal/apperror"
 	"note_service/pkg/logging"
 )
 
 const (
 	tagsURL = "/api/tags"
-	tagURL  = "/api/tags/:uuid"
+	tagURL  = "/api/tags/{uuid}"
 )
 
 type TagService interface {
@@ -27,10 +25,10 @@ type Handler struct {
 	TagService TagService
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, tagsURL, apperror.Middleware(h.GetTags))
-	router.HandlerFunc(http.MethodPost, tagsURL, apperror.Middleware(h.CreateTag))
-	router.HandlerFunc(http.MethodDelete, tagURL, apperror.Middleware(h.DeleteTag))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+tagsURL, apperror.Middleware(h.GetTags))
+	mux.HandleFunc("POST "+tagsURL, apperror.Middleware(h.CreateTag))
+	mux.HandleFunc("DELETE "+tagURL, apperror.Middleware(h.DeleteTag))
 }
 
 func (h *Handler) GetTags(w http.ResponseWriter, r *http.Request) error {
@@ -77,8 +75,7 @@ func (h *Handler) CreateTag(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) DeleteTag(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	tagUUID := params.ByName("uuid")
+	tagUUID := r.PathValue("uuid")
 	if tagUUID == "" {
 		return apperror.BadRequestError("empty tag uuid")
 	}

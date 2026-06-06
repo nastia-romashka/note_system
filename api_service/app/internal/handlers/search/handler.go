@@ -12,8 +12,6 @@ import (
 	"myproject/internal/searchsync"
 	"myproject/pkg/logging"
 	"myproject/pkg/middleware/jwt"
-
-	"github.com/julienschmidt/httprouter"
 )
 
 const (
@@ -34,9 +32,9 @@ type reindexResponse struct {
 	CategoryUUIDs     []string `json:"category_uuids"`
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, searchNotesURL, jwt.JWTMiddleware(apperror.Middleware(h.SearchNotes)))
-	router.HandlerFunc(http.MethodPost, searchReindexURL, jwt.JWTMiddleware(apperror.Middleware(h.ReindexNotes)))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+searchNotesURL, jwt.JWTMiddleware(apperror.Middleware(h.SearchNotes)))
+	mux.HandleFunc(http.MethodPost+" "+searchReindexURL, jwt.JWTMiddleware(apperror.Middleware(h.ReindexNotes)))
 }
 
 func (h *Handler) SearchNotes(w http.ResponseWriter, r *http.Request) error {

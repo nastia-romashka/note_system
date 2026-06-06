@@ -2,23 +2,26 @@ package users
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
-
-	"github.com/julienschmidt/httprouter"
 
 	"user_service/internal/apperror"
 	"user_service/pkg/logging"
 )
 
 const (
-	usersURL        = "/api/users"
-	userURL         = "/api/users/:uuid"
-	userProfileURL  = "/api/users/:uuid/profile"
-	userActionsURL  = "/api/users/:uuid/actions"
-	createActionURL = "/api/user-actions/:uuid"
-	authenticateURL = "/api/users/authenticate"
+	usersURL         = "/api/users"
+	userURL          = "/api/users/{uuid}"
+	userProfileURL   = "/api/users/{uuid}/profile"
+	userActionsURL   = "/api/users/{uuid}/actions"
+	createActionURL  = "/api/user-actions/{uuid}"
+	authenticateURL  = "/api/users/authenticate"
+	userSessionsURL  = "/api/user-sessions"
+	rotateSessionURL = "/api/user-sessions/rotate"
+	revokeSessionURL = "/api/user-sessions/revoke"
 )
 
 type UserService interface {
@@ -29,6 +32,9 @@ type UserService interface {
 	Authenticate(dto AuthUserDTO) (User, error)
 	CreateAction(userUUID string, dto CreateUserActionDTO) error
 	GetActions(userUUID string, limit, offset int) ([]UserAction, error)
+	CreateSession(dto CreateUserSessionDTO) error
+	RotateSession(dto RotateUserSessionDTO) (UserSession, error)
+	RevokeSession(refreshTokenHash string) error
 }
 
 type Handler struct {
@@ -36,23 +42,26 @@ type Handler struct {
 	UserService UserService
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodPost, usersURL, apperror.Middleware(h.CreateUser))
-	router.HandlerFunc(http.MethodGet, userURL, apperror.Middleware(h.GetUser))
-	router.HandlerFunc(http.MethodGet, userProfileURL, apperror.Middleware(h.GetUserProfile))
-	router.HandlerFunc(http.MethodPatch, userProfileURL, apperror.Middleware(h.UpdateUserProfile))
-	router.HandlerFunc(http.MethodGet, userActionsURL, apperror.Middleware(h.GetUserActions))
-	router.HandlerFunc(http.MethodPost, createActionURL, apperror.Middleware(h.CreateUserAction))
-	router.HandlerFunc(http.MethodPost, authenticateURL, apperror.Middleware(h.Authenticate))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("POST "+usersURL, apperror.Middleware(h.CreateUser))
+	mux.HandleFunc("GET "+userURL, apperror.Middleware(h.GetUser))
+	mux.HandleFunc("GET "+userProfileURL, apperror.Middleware(h.GetUserProfile))
+	mux.HandleFunc("PATCH "+userProfileURL, apperror.Middleware(h.UpdateUserProfile))
+	mux.HandleFunc("GET "+userActionsURL, apperror.Middleware(h.GetUserActions))
+	mux.HandleFunc("POST "+createActionURL, apperror.Middleware(h.CreateUserAction))
+	mux.HandleFunc("POST "+authenticateURL, apperror.Middleware(h.Authenticate))
+	mux.HandleFunc("POST "+userSessionsURL, apperror.Middleware(h.CreateUserSession))
+	mux.HandleFunc("POST "+rotateSessionURL, apperror.Middleware(h.RotateUserSession))
+	mux.HandleFunc("POST "+revokeSessionURL, apperror.Middleware(h.RevokeUserSession))
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) error {
 	var dto CreateUserDTO
 	defer r.Body.Close()
 
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := decodeJSONBody(r, &dto); err != nil {
 		h.Logger.Warn("failed to decode create user payload", "error", err)
-		return apperror.BadRequestError("can't decode")
+		return err
 	}
 
 	userUUID, err := h.UserService.Create(dto)
@@ -66,8 +75,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) error {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	userUUID := params.ByName("uuid")
+	userUUID := r.PathValue("uuid")
 	if userUUID == "" {
 		return apperror.BadRequestError("empty user uuid")
 	}
@@ -121,9 +129,9 @@ func (h *Handler) UpdateUserProfile(w http.ResponseWriter, r *http.Request) erro
 	var dto UpdateUserProfileDTO
 	defer r.Body.Close()
 
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := decodeJSONBody(r, &dto); err != nil {
 		h.Logger.Warn("failed to decode update user profile payload", "error", err)
-		return apperror.BadRequestError("can't decode")
+		return err
 	}
 
 	if err := h.UserService.UpdateProfile(userUUID, dto); err != nil {
@@ -175,9 +183,9 @@ func (h *Handler) CreateUserAction(w http.ResponseWriter, r *http.Request) error
 	var dto CreateUserActionDTO
 	defer r.Body.Close()
 
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := decodeJSONBody(r, &dto); err != nil {
 		h.Logger.Warn("failed to decode create user action payload", "error", err)
-		return apperror.BadRequestError("can't decode")
+		return err
 	}
 
 	if err := h.UserService.CreateAction(userUUID, dto); err != nil {
@@ -192,9 +200,9 @@ func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request) error {
 	var dto AuthUserDTO
 	defer r.Body.Close()
 
-	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
+	if err := decodeJSONBody(r, &dto); err != nil {
 		h.Logger.Warn("failed to decode auth payload", "error", err)
-		return apperror.BadRequestError("can't decode")
+		return err
 	}
 
 	user, err := h.UserService.Authenticate(dto)
@@ -214,9 +222,68 @@ func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
+func (h *Handler) CreateUserSession(w http.ResponseWriter, r *http.Request) error {
+	var dto CreateUserSessionDTO
+	defer r.Body.Close()
+
+	if err := decodeJSONBody(r, &dto); err != nil {
+		h.Logger.Warn("failed to decode create session payload", "error", err)
+		return err
+	}
+
+	if err := h.UserService.CreateSession(dto); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	return nil
+}
+
+func (h *Handler) RotateUserSession(w http.ResponseWriter, r *http.Request) error {
+	var dto RotateUserSessionDTO
+	defer r.Body.Close()
+
+	if err := decodeJSONBody(r, &dto); err != nil {
+		h.Logger.Warn("failed to decode rotate session payload", "error", err)
+		return err
+	}
+
+	session, err := h.UserService.RotateSession(dto)
+	if err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(session)
+	if err != nil {
+		h.Logger.Error("failed to marshal rotate session response", "error", err)
+		return fmt.Errorf("marshal rotate session: %w", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+	return nil
+}
+
+func (h *Handler) RevokeUserSession(w http.ResponseWriter, r *http.Request) error {
+	var dto RevokeUserSessionDTO
+	defer r.Body.Close()
+
+	if err := decodeJSONBody(r, &dto); err != nil {
+		h.Logger.Warn("failed to decode revoke session payload", "error", err)
+		return err
+	}
+
+	if err := h.UserService.RevokeSession(dto.RefreshTokenHash); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 func userUUIDFromParams(r *http.Request) string {
-	params := r.Context().Value(httprouter.ParamsKey).(httprouter.Params)
-	return params.ByName("uuid")
+	return r.PathValue("uuid")
 }
 
 func positiveIntQuery(r *http.Request, name string, defaultValue int) (int, error) {
@@ -231,4 +298,25 @@ func positiveIntQuery(r *http.Request, name string, defaultValue int) (int, erro
 	}
 
 	return value, nil
+}
+
+func decodeJSONBody(r *http.Request, dst any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(dst); err != nil {
+		switch {
+		case errors.Is(err, io.EOF):
+			return apperror.BadRequestError("request body is required")
+		default:
+			return apperror.BadRequestError("invalid JSON body")
+		}
+	}
+
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return apperror.BadRequestError("request body must contain a single JSON object")
+	}
+
+	return nil
 }

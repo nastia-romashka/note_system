@@ -5,7 +5,6 @@ go 1.25.1
 require (
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.9.2
-	github.com/julienschmidt/httprouter v1.3.0
 	golang.org/x/crypto v0.26.0
 )
 

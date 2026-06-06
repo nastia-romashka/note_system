@@ -12,7 +12,9 @@ import (
 type Config struct {
 	IsDebug *bool `yaml:"is_debug"`
 	JWT     struct {
-		Secret string `yaml:"secret" env:"API_SERVICE_JWT_SECRET" env-required:"true"`
+		Secret                 string `yaml:"secret" env:"API_SERVICE_JWT_SECRET" env-required:"true"`
+		AccessTokenTTLMinutes  int    `yaml:"access_token_ttl_minutes" env:"API_SERVICE_ACCESS_TOKEN_TTL_MINUTES" env-default:"30"`
+		RefreshTokenTTLMinutes int    `yaml:"refresh_token_ttl_minutes" env:"API_SERVICE_REFRESH_TOKEN_TTL_MINUTES" env-default:"43200"`
 	}
 	CategoryService struct {
 		URL string `yaml:"url" env:"API_SERVICE_CATEGORY_URL" env-required:"true"`

@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/julienschmidt/httprouter"
-
 	"file_service/internal/config"
 	filehandlers "file_service/internal/handlers/files"
 	fileservice "file_service/internal/service/files"
@@ -38,8 +36,8 @@ func main() {
 		logger.Fatal("failed to initialize storage", "error", err)
 	}
 
-	router := httprouter.New()
-	router.HandlerFunc(http.MethodGet, "/health", func(w http.ResponseWriter, _ *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"file_service"}`))
@@ -54,12 +52,12 @@ func main() {
 			cfg.Upload.MaxFileSizeMB*1024*1024,
 		),
 	}
-	fileHandler.Register(router)
+	fileHandler.Register(mux)
 
-	start(router, logger, cfg)
+	start(mux, logger, cfg)
 }
 
-func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config) {
+func start(handler http.Handler, logger logging.Logger, cfg *config.Config) {
 	var server *http.Server
 	var listener net.Listener
 
@@ -85,7 +83,7 @@ func start(router *httprouter.Router, logger logging.Logger, cfg *config.Config)
 	}
 
 	server = &http.Server{
-		Handler:      router,
+		Handler:      handler,
 		WriteTimeout: 30 * time.Second,
 		ReadTimeout:  30 * time.Second,
 	}

@@ -11,6 +11,9 @@ type Storage interface {
 	UpdateLastLogin(userUUID string) error
 	CreateAction(userUUID string, dto handlermodel.CreateUserActionDTO) error
 	FindActions(userUUID string, limit, offset int) ([]handlermodel.UserAction, error)
+	CreateSession(dto handlermodel.CreateUserSessionDTO) error
+	RotateSession(dto handlermodel.RotateUserSessionDTO) (handlermodel.UserSession, error)
+	RevokeSession(refreshTokenHash string) error
 	Ping() error
 	Close()
 }

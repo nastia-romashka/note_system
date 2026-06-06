@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/julienschmidt/httprouter"
-
 	"myproject/internal/apperror"
 	categoryclient "myproject/internal/client/category"
 	fileclient "myproject/internal/client/file"
@@ -46,11 +44,11 @@ type SummaryStats struct {
 	LastActivityAt  *int64 `json:"last_activity_at"`
 }
 
-func (h *Handler) Register(router *httprouter.Router) {
-	router.HandlerFunc(http.MethodGet, meURL, jwt.JWTMiddleware(apperror.Middleware(h.GetProfile)))
-	router.HandlerFunc(http.MethodPatch, meURL, jwt.JWTMiddleware(apperror.Middleware(h.UpdateProfile)))
-	router.HandlerFunc(http.MethodGet, meActionsURL, jwt.JWTMiddleware(apperror.Middleware(h.GetActions)))
-	router.HandlerFunc(http.MethodGet, meSummaryURL, jwt.JWTMiddleware(apperror.Middleware(h.GetSummary)))
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc(http.MethodGet+" "+meURL, jwt.JWTMiddleware(apperror.Middleware(h.GetProfile)))
+	mux.HandleFunc(http.MethodPatch+" "+meURL, jwt.JWTMiddleware(apperror.Middleware(h.UpdateProfile)))
+	mux.HandleFunc(http.MethodGet+" "+meActionsURL, jwt.JWTMiddleware(apperror.Middleware(h.GetActions)))
+	mux.HandleFunc(http.MethodGet+" "+meSummaryURL, jwt.JWTMiddleware(apperror.Middleware(h.GetSummary)))
 }
 
 func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) error {

@@ -18,7 +18,15 @@ web_client/app/dist/
 
 # Runtime artifacts
 *.log
+*.err.log
+*.out.log
 api_service/logs/
+category_service/logs/
+category_service/export/neo4j/logs/
+category_service/export/neo4j/data/
+file_service/logs/
+note_service/logs/
+search_service/logs/
 user_service/logs/
 *.pid
 *.sock
@@ -28,6 +36,10 @@ api_service/cmd/main/app.sock
 .env
 .env.*
 !.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 .venv/
 category_service/.venv/
 node_modules/
@@ -52,3 +64,6 @@ Thumbs.db
 go.work
 go.work.sum
 .gocache/
+.gomodcache/
+.gocache-test/
+.gocache-local/
