@@ -10,7 +10,6 @@ from dao.model.dto import (
     DeleteCategoryDTO,
     DeleteGraphNoteDTO,
     DeleteUserGraphLinkDTO,
-    LinkGraphNotesDTO,
     UpdateCategoryDTO,
     UpdateGraphNoteDTO,
 )
@@ -107,54 +106,6 @@ async def delete_note_node(
 ) -> Response:
     service.delete_note_node(note_uuid=note_uuid, user_uuid=note_dto.user_uuid)
     request.app.state.logger.debug("deleted graph note uuid=%s", note_uuid)
-    return Response(status_code=HTTPStatus.NO_CONTENT)
-
-
-@router.post(
-    "/api/graph/notes/{source_note_uuid}/links/{target_note_uuid}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def link_notes(
-    request: Request,
-    source_note_uuid: str,
-    target_note_uuid: str,
-    link_dto: LinkGraphNotesDTO,
-    service: CategoryService = Depends(get_category_service),
-) -> Response:
-    service.link_notes(
-        user_uuid=link_dto.user_uuid,
-        source_note_uuid=source_note_uuid,
-        target_note_uuid=target_note_uuid,
-    )
-    request.app.state.logger.debug(
-        "linked graph notes source=%s target=%s",
-        source_note_uuid,
-        target_note_uuid,
-    )
-    return Response(status_code=HTTPStatus.NO_CONTENT)
-
-
-@router.delete(
-    "/api/graph/notes/{source_note_uuid}/links/{target_note_uuid}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def unlink_notes(
-    request: Request,
-    source_note_uuid: str,
-    target_note_uuid: str,
-    link_dto: LinkGraphNotesDTO,
-    service: CategoryService = Depends(get_category_service),
-) -> Response:
-    service.unlink_notes(
-        user_uuid=link_dto.user_uuid,
-        source_note_uuid=source_note_uuid,
-        target_note_uuid=target_note_uuid,
-    )
-    request.app.state.logger.debug(
-        "unlinked graph notes source=%s target=%s",
-        source_note_uuid,
-        target_note_uuid,
-    )
     return Response(status_code=HTTPStatus.NO_CONTENT)
 
 

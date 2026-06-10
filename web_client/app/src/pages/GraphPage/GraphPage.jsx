@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -12,11 +12,20 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import { buildCategoryOptions, filterGraph } from "./graphFilters";
+
 const NODE_WIDTH = 220;
 const CATEGORY_X = 40;
 const CATEGORY_DEPTH_GAP = 280;
 const NOTE_GAP_X = 350;
 const ROW_GAP = 130;
+const NODE_APPEAR_DELAY_MS = 500;
+
+const DEFAULT_FILTERS = {
+  showCategories: true,
+  showNotes: true,
+  selectedCategoryId: "",
+};
 
 const nodeTypes = {
   graphNode: GraphNode,
@@ -32,14 +41,82 @@ export default function GraphPage({
   onOpenGraphNode,
   onOpenProfile,
 }) {
-  const preparedGraph = useMemo(() => toFlowGraph(graph), [graph]);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const filteredGraph = useMemo(() => filterGraph(graph, filters), [graph, filters]);
+  const preparedGraph = useMemo(() => toFlowGraph(filteredGraph), [filteredGraph]);
+  const categoryOptions = useMemo(() => buildCategoryOptions(graph), [graph]);
+  const animationOrder = useMemo(
+    () => [...preparedGraph.nodes].sort(compareAnimationNodes),
+    [preparedGraph.nodes],
+  );
+  const timerRef = useRef(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [animationStep, setAnimationStep] = useState(-1);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
+  const hasActiveFilters =
+    filters.selectedCategoryId !== "" || !filters.showCategories || !filters.showNotes;
+
+  const visibleNodeIds = useMemo(() => {
+    if (!isAnimating) {
+      return new Set(preparedGraph.nodes.map((node) => node.id));
+    }
+
+    return new Set(
+      animationOrder.slice(0, Math.max(animationStep + 1, 0)).map((node) => node.id),
+    );
+  }, [animationOrder, animationStep, isAnimating, preparedGraph.nodes]);
+
+  const visibleNodes = useMemo(() => {
+    if (!isAnimating) {
+      return preparedGraph.nodes;
+    }
+
+    return preparedGraph.nodes.filter((node) => visibleNodeIds.has(node.id));
+  }, [isAnimating, preparedGraph.nodes, visibleNodeIds]);
+
+  const visibleEdges = useMemo(() => {
+    if (!isAnimating) {
+      return preparedGraph.edges;
+    }
+
+    return preparedGraph.edges.filter(
+      (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target),
+    );
+  }, [isAnimating, preparedGraph.edges, visibleNodeIds]);
+
   useEffect(() => {
-    setNodes(preparedGraph.nodes);
-    setEdges(preparedGraph.edges);
-  }, [preparedGraph, setEdges, setNodes]);
+    setNodes(visibleNodes);
+    setEdges(visibleEdges);
+  }, [setEdges, setNodes, visibleEdges, visibleNodes]);
+
+  useEffect(() => {
+    if (
+      filters.selectedCategoryId &&
+      !categoryOptions.some((option) => option.id === filters.selectedCategoryId)
+    ) {
+      setFilters((current) => ({
+        ...current,
+        selectedCategoryId: "",
+      }));
+    }
+  }, [categoryOptions, filters.selectedCategoryId]);
+
+  useEffect(() => {
+    stopAnimation(timerRef, setIsAnimating);
+    setAnimationStep(-1);
+  }, [preparedGraph]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    },
+    [],
+  );
 
   function handleNodeClick(_, node) {
     onOpenGraphNode?.(node.data);
@@ -62,6 +139,53 @@ export default function GraphPage({
     void onCreateGraphLink?.(sourceId, targetId);
   }
 
+  function handleStartAnimation() {
+    if (loading || isAnimating || animationOrder.length === 0) {
+      return;
+    }
+
+    stopAnimation(timerRef, setIsAnimating);
+
+    setIsAnimating(true);
+    setAnimationStep(0);
+
+    if (animationOrder.length === 1) {
+      setIsAnimating(false);
+      return;
+    }
+
+    timerRef.current = window.setInterval(() => {
+      setAnimationStep((currentStep) => {
+        const nextStep = currentStep + 1;
+        if (nextStep >= animationOrder.length - 1) {
+          stopAnimation(timerRef, setIsAnimating);
+          return animationOrder.length - 1;
+        }
+
+        return nextStep;
+      });
+    }, NODE_APPEAR_DELAY_MS);
+  }
+
+  function handleToggleFilter(key) {
+    setFilters((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  }
+
+  function handleSelectedCategoryChange(event) {
+    const selectedCategoryId = event.target.value;
+    setFilters((current) => ({
+      ...current,
+      selectedCategoryId,
+    }));
+  }
+
+  function handleResetFilters() {
+    setFilters({ ...DEFAULT_FILTERS });
+  }
+
   return (
     <main className="graph-page">
       <header className="graph-header">
@@ -71,7 +195,7 @@ export default function GraphPage({
         </div>
         <div className="graph-actions">
           <button className="secondary-button" type="button" onClick={onBackToNotes}>
-            К заметкам
+            Заметки
           </button>
           <button className="secondary-button" type="button" onClick={onOpenCalendar}>
             Календарь
@@ -82,12 +206,72 @@ export default function GraphPage({
         </div>
       </header>
 
+      <section className="graph-filters">
+        <label className="graph-filter-toggle">
+          <input
+            type="checkbox"
+            checked={filters.showCategories}
+            onChange={() => handleToggleFilter("showCategories")}
+          />
+          <span>Категории</span>
+        </label>
+
+        <label className="graph-filter-toggle">
+          <input
+            type="checkbox"
+            checked={filters.showNotes}
+            onChange={() => handleToggleFilter("showNotes")}
+          />
+          <span>Заметки</span>
+        </label>
+
+        <label className="graph-filter-field">
+          <span>Ветка категории</span>
+          <select value={filters.selectedCategoryId} onChange={handleSelectedCategoryChange}>
+            <option value="">Все категории</option>
+            {categoryOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={handleResetFilters}
+          disabled={!hasActiveFilters}
+        >
+          Сбросить
+        </button>
+
+        <button
+          className="primary-button graph-filter-action"
+          type="button"
+          onClick={handleStartAnimation}
+          disabled={loading || isAnimating || animationOrder.length === 0}
+        >
+          {isAnimating ? "Анимация идет..." : "Запустить анимацию"}
+        </button>
+      </section>
+
+      {isAnimating ? (
+        <div className="graph-status">
+          {`Показано ${Math.min(animationStep + 1, animationOrder.length)} из ${animationOrder.length} узлов`}
+        </div>
+      ) : null}
+
       <section className="graph-panel">
         {loading && <div className="graph-loading">Загрузка графа...</div>}
-        {!loading && nodes.length === 0 && (
+        {!loading && preparedGraph.nodes.length === 0 && (
           <div className="graph-empty">
-            <h2>Граф пока пустой</h2>
-            <p>Создайте категории и заметки, после этого они появятся здесь как узлы графа.</p>
+            <h2>Граф пустой</h2>
+            <p>
+              {hasActiveFilters
+                ? "Текущие фильтры ничего не показали. Попробуйте другую категорию или сбросьте фильтры."
+                : "Создайте категории и заметки, после этого они появятся здесь как узлы графа."}
+            </p>
           </div>
         )}
 
@@ -123,6 +307,7 @@ function GraphNode({ data }) {
       <Handle type="target" position={Position.Left} />
       <div className="graph-node-kind">{data.type === "category" ? "Категория" : "Заметка"}</div>
       <strong>{data.label || "Без названия"}</strong>
+      {data.createdAtLabel ? <span className="graph-node-meta">{data.createdAtLabel}</span> : null}
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -245,6 +430,8 @@ function buildCategoryPositions(categories, categoryEdges) {
 }
 
 function toFlowNode(node, position) {
+  const createdAt = normalizeUnixTimestamp(node.created_at);
+
   return {
     id: node.id,
     type: "graphNode",
@@ -255,16 +442,40 @@ function toFlowNode(node, position) {
       label: node.label,
       color: node.color,
       category_uuid: node.category_uuid,
+      createdAt,
+      createdAtLabel: createdAt ? formatCreatedAt(createdAt) : "",
     },
   };
+}
+
+function compareAnimationNodes(left, right) {
+  const leftTime = normalizeAnimationTime(left.data.createdAt);
+  const rightTime = normalizeAnimationTime(right.data.createdAt);
+
+  if (leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+
+  const leftTypePriority = left.data.type === "category" ? 0 : 1;
+  const rightTypePriority = right.data.type === "category" ? 0 : 1;
+  if (leftTypePriority !== rightTypePriority) {
+    return leftTypePriority - rightTypePriority;
+  }
+
+  return String(left.id).localeCompare(String(right.id), "ru");
+}
+
+function normalizeAnimationTime(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return value;
 }
 
 function resolveEdgeClassName(type) {
   if (type === "USER_LINK") {
     return "graph-edge-user";
-  }
-  if (type === "LINKED_TO") {
-    return "graph-edge-link";
   }
   return "graph-edge-category";
 }
@@ -275,12 +486,34 @@ function resolveEdgeStyle(type) {
       strokeWidth: 2.4,
     };
   }
-  if (type === "LINKED_TO") {
-    return {
-      strokeWidth: 2.2,
-    };
-  }
   return {
     strokeWidth: 2.4,
   };
+}
+
+function normalizeUnixTimestamp(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return Math.trunc(value);
+}
+
+function formatCreatedAt(value) {
+  return new Date(value * 1000).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function stopAnimation(timerRef, setIsAnimating) {
+  if (timerRef.current) {
+    window.clearInterval(timerRef.current);
+    timerRef.current = null;
+  }
+
+  setIsAnimating(false);
 }

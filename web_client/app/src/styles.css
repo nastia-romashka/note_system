@@ -100,6 +100,10 @@ button {
   margin-inline: auto;
 }
 
+.notes-page {
+  max-width: 1440px;
+}
+
 .auth-page {
   display: flex;
   align-items: center;
@@ -436,7 +440,7 @@ select:focus {
 }
 
 .notes-layout {
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: clamp(360px, 32vw, 440px) minmax(0, 1fr);
   gap: 22px;
   align-items: start;
 }
@@ -555,6 +559,7 @@ select:focus {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   padding: 10px 12px;
   border-color: transparent;
   border-radius: 10px;
@@ -572,6 +577,7 @@ select:focus {
 
 .category-main {
   flex: 1;
+  min-width: 0;
   gap: 8px;
   padding: 0;
   color: inherit;
@@ -586,6 +592,9 @@ select:focus {
 }
 
 .category-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
   flex-shrink: 0;
   opacity: 0;
   pointer-events: none;
@@ -816,6 +825,63 @@ select:focus {
   flex-wrap: wrap;
 }
 
+.graph-filters {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: var(--shadow-sm);
+}
+
+.graph-filter-toggle,
+.graph-filter-field {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-filter-toggle {
+  min-width: 140px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.graph-filter-toggle span,
+.graph-filter-field span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.graph-filter-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.graph-filter-field {
+  min-width: min(320px, 100%);
+}
+
+.graph-filter-field select {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.graph-filter-action {
+  margin-left: auto;
+}
+
+.graph-status {
+  margin-bottom: 14px;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
 .graph-link-mode-active {
   border-color: rgba(90, 185, 169, 0.42);
   background: rgba(90, 185, 169, 0.14);
@@ -864,6 +930,13 @@ select:focus {
   line-height: 1.15;
 }
 
+.graph-node-meta {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .graph-node-kind {
   margin-bottom: 6px;
   color: var(--muted);
@@ -892,12 +965,6 @@ select:focus {
 .graph-edge-category path {
   stroke: rgba(90, 104, 126, 0.82);
   stroke-width: 2.4;
-}
-
-.graph-edge-link path {
-  stroke: rgba(99, 130, 124, 0.78);
-  stroke-width: 2.2;
-  stroke-dasharray: 8 6;
 }
 
 .graph-edge-user path {

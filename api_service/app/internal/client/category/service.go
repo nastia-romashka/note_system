@@ -25,7 +25,7 @@ func NewService(baseURL string, resource string, logger logging.Logger) Category
 		base: rest.BaseClient{
 			BaseURL: baseURL,
 			HTTPClient: &http.Client{
-				Timeout: 10 * time.Second,
+				Timeout: 60 * time.Second,
 			},
 			Logger: logger,
 		},
@@ -42,8 +42,6 @@ type CategoryService interface {
 	CreateNoteNode(ctx context.Context, dto CreateGraphNoteDTO) error
 	UpdateNoteNode(ctx context.Context, noteUuid string, dto UpdateGraphNoteDTO) error
 	DeleteNoteNode(ctx context.Context, noteUuid, userUuid string) error
-	LinkNotes(ctx context.Context, sourceNoteUuid, targetNoteUuid, userUuid string) error
-	UnlinkNotes(ctx context.Context, sourceNoteUuid, targetNoteUuid, userUuid string) error
 	CreateUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error
 	DeleteUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error
 }
@@ -329,24 +327,6 @@ func (c *client) DeleteNoteNode(ctx context.Context, noteUuid, userUuid string) 
 	return c.sendGraphJSON(ctx, http.MethodDelete, fmt.Sprintf("graph/notes/%s", noteUuid), DeleteGraphNoteDTO{
 		UserUuid: userUuid,
 	})
-}
-
-func (c *client) LinkNotes(ctx context.Context, sourceNoteUuid, targetNoteUuid, userUuid string) error {
-	return c.sendGraphJSON(
-		ctx,
-		http.MethodPost,
-		fmt.Sprintf("graph/notes/%s/links/%s", sourceNoteUuid, targetNoteUuid),
-		LinkGraphNotesDTO{UserUuid: userUuid},
-	)
-}
-
-func (c *client) UnlinkNotes(ctx context.Context, sourceNoteUuid, targetNoteUuid, userUuid string) error {
-	return c.sendGraphJSON(
-		ctx,
-		http.MethodDelete,
-		fmt.Sprintf("graph/notes/%s/links/%s", sourceNoteUuid, targetNoteUuid),
-		LinkGraphNotesDTO{UserUuid: userUuid},
-	)
 }
 
 func (c *client) CreateUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error {

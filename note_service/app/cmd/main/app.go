@@ -16,6 +16,7 @@ import (
 	noteservice "note_service/internal/service/notes"
 	tagservice "note_service/internal/service/tags"
 	"note_service/internal/storage/db"
+	"note_service/pkg/docs"
 	"note_service/pkg/logging"
 	"note_service/pkg/shutdown"
 )
@@ -37,6 +38,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"note_service"}`))
 	})
+	docs.Register(mux)
 
 	noteHandler := handlers.Handler{
 		Logger:      logger,

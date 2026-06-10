@@ -343,38 +343,6 @@ func openAPISpec() map[string]any {
 					},
 				},
 			},
-			"/api/notes/{uuid}/links/{target_uuid}": map[string]any{
-				"post": map[string]any{
-					"tags":        []string{"graph"},
-					"summary":     "Create link between notes",
-					"operationId": "linkNotes",
-					"security":    bearerSecurity,
-					"parameters": []map[string]any{
-						pathParam("uuid", "Source note UUID"),
-						pathParam("target_uuid", "Target note UUID"),
-					},
-					"responses": map[string]any{
-						"204": noContentResponse("Notes linked"),
-						"400": errorResponse(),
-						"401": errorResponse(),
-					},
-				},
-				"delete": map[string]any{
-					"tags":        []string{"graph"},
-					"summary":     "Delete link between notes",
-					"operationId": "unlinkNotes",
-					"security":    bearerSecurity,
-					"parameters": []map[string]any{
-						pathParam("uuid", "Source note UUID"),
-						pathParam("target_uuid", "Target note UUID"),
-					},
-					"responses": map[string]any{
-						"204": noContentResponse("Notes unlinked"),
-						"400": errorResponse(),
-						"401": errorResponse(),
-					},
-				},
-			},
 			"/api/notes/{uuid}/files": map[string]any{
 				"get": map[string]any{
 					"tags":        []string{"files"},
@@ -634,6 +602,7 @@ func openAPISpec() map[string]any {
 						"uuid":        map[string]any{"type": "string"},
 						"name":        map[string]any{"type": "string"},
 						"color":       map[string]any{"type": "string"},
+						"created_at":  map[string]any{"type": "integer", "format": "int64"},
 						"user_uuid":   map[string]any{"type": "string"},
 						"parent_uuid": map[string]any{"type": "string"},
 						"children": map[string]any{
@@ -803,6 +772,7 @@ func openAPISpec() map[string]any {
 						"label":         map[string]any{"type": "string"},
 						"color":         map[string]any{"type": "string"},
 						"category_uuid": map[string]any{"type": "string"},
+						"created_at":    map[string]any{"type": "integer", "format": "int64"},
 					},
 				},
 				"GraphEdge": map[string]any{

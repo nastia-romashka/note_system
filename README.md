@@ -78,6 +78,10 @@ docker compose up --build
 - Swagger UI для `api_service`: `http://localhost:8080/swagger`
 - OpenAPI JSON для `api_service`: `http://localhost:8080/openapi.json`
 - FastAPI docs для `category_service`: `http://localhost:8081/docs`
+- Swagger UI для `note_service`: `http://localhost:8082/swagger`
+- OpenAPI JSON для `note_service`: `http://localhost:8082/openapi.json`
+- Swagger UI для `user_service`: `http://localhost:8083/swagger`
+- OpenAPI JSON для `user_service`: `http://localhost:8083/openapi.json`
 - Frontend: `http://localhost:5173`
 - MinIO API: `http://localhost:9000`
 - MinIO Console: `http://localhost:9001`
@@ -116,13 +120,6 @@ docker compose up --build
 - `/api/graph`
 - `/api/me`
 - `/api/search/notes`
-
-## Что важно знать
-
-- `api_service` - основная точка входа для клиента
-- `category_service` уже отдаёт встроенную документацию FastAPI
-- `api_service` отдаёт Swagger UI и OpenAPI-схему
-- healthcheck у сервисов доступен по `/health`
 
 ## Полезные файлы
 

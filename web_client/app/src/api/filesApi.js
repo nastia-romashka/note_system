@@ -31,7 +31,7 @@ export async function downloadFile(token, noteId, fileId) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => null);
-    throw new Error(errorData?.message || "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРєР°С‡Р°С‚СЊ С„Р°Р№Р».");
+    throw new Error(errorData?.message || "Не удалось скачать файл.");
   }
 
   return response.blob();

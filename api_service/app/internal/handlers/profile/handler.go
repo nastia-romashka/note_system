@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"myproject/internal/apperror"
@@ -45,33 +44,8 @@ type SummaryStats struct {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc(http.MethodGet+" "+meURL, jwt.JWTMiddleware(apperror.Middleware(h.GetProfile)))
 	mux.HandleFunc(http.MethodPatch+" "+meURL, jwt.JWTMiddleware(apperror.Middleware(h.UpdateProfile)))
-	mux.HandleFunc(http.MethodGet+" "+meActionsURL, jwt.JWTMiddleware(apperror.Middleware(h.GetActions)))
 	mux.HandleFunc(http.MethodGet+" "+meSummaryURL, jwt.JWTMiddleware(apperror.Middleware(h.GetSummary)))
-}
-
-func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) error {
-	userUUID, err := h.userUUIDFromContext(r)
-	if err != nil {
-		return err
-	}
-
-	profile, err := h.UserService.GetProfile(r.Context(), userUUID)
-	if err != nil {
-		return err
-	}
-
-	data, err := json.Marshal(profile)
-	if err != nil {
-		h.Logger.Error("failed to marshal profile response", "user_uuid", userUUID, "error", err)
-		return fmt.Errorf("marshal profile: %w", err)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
-	return nil
 }
 
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) error {
@@ -200,42 +174,6 @@ func (h *Handler) fetchUpcomingEvents(r *http.Request, userUUID string) ([]notec
 	return notes, nil
 }
 
-func (h *Handler) GetActions(w http.ResponseWriter, r *http.Request) error {
-	userUUID, err := h.userUUIDFromContext(r)
-	if err != nil {
-		return err
-	}
-
-	limit, err := positiveIntQuery(r, "limit", 50)
-	if err != nil {
-		return err
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, err := positiveIntQuery(r, "offset", 0)
-	if err != nil {
-		return err
-	}
-
-	actions, err := h.UserService.GetActions(r.Context(), userUUID, limit, offset)
-	if err != nil {
-		return err
-	}
-
-	data, err := json.Marshal(actions)
-	if err != nil {
-		h.Logger.Error("failed to marshal actions response", "user_uuid", userUUID, "error", err)
-		return fmt.Errorf("marshal actions: %w", err)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
-	return nil
-}
-
 func (h *Handler) userUUIDFromContext(r *http.Request) (string, error) {
 	rawUserUUID := r.Context().Value("user_uuid")
 	if rawUserUUID == nil {
@@ -250,18 +188,4 @@ func (h *Handler) userUUIDFromContext(r *http.Request) (string, error) {
 	}
 
 	return userUUID, nil
-}
-
-func positiveIntQuery(r *http.Request, name string, defaultValue int) (int, error) {
-	rawValue := r.URL.Query().Get(name)
-	if rawValue == "" {
-		return defaultValue, nil
-	}
-
-	value, err := strconv.Atoi(rawValue)
-	if err != nil || value < 0 {
-		return 0, apperror.BadRequestError(fmt.Sprintf("invalid %s", name))
-	}
-
-	return value, nil
 }

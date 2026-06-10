@@ -23,7 +23,6 @@ const (
 	notesURL         = "/api/notes"
 	noteURL          = "/api/notes/{uuid}"
 	noteDuplicateURL = "/api/notes/{uuid}/duplicate"
-	noteLinkURL      = "/api/notes/{uuid}/links/{target_uuid}"
 	calendarURL      = "/api/calendar"
 )
 
@@ -62,14 +61,10 @@ type noteFile struct {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc(http.MethodGet+" "+notesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetNotes)))
-	mux.HandleFunc(http.MethodGet+" "+calendarURL, jwt.JWTMiddleware(apperror.Middleware(h.GetCalendarNotes)))
 	mux.HandleFunc(http.MethodPost+" "+notesURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateNote)))
-	mux.HandleFunc(http.MethodGet+" "+noteURL, jwt.JWTMiddleware(apperror.Middleware(h.GetNoteByUuid)))
 	mux.HandleFunc(http.MethodPost+" "+noteDuplicateURL, jwt.JWTMiddleware(apperror.Middleware(h.DuplicateNote)))
 	mux.HandleFunc(http.MethodPatch+" "+noteURL, jwt.JWTMiddleware(apperror.Middleware(h.PartiallyUpdateNote)))
 	mux.HandleFunc(http.MethodDelete+" "+noteURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteNote)))
-	mux.HandleFunc(http.MethodPost+" "+noteLinkURL, jwt.JWTMiddleware(apperror.Middleware(h.LinkNotes)))
-	mux.HandleFunc(http.MethodDelete+" "+noteLinkURL, jwt.JWTMiddleware(apperror.Middleware(h.UnlinkNotes)))
 }
 
 func (h *Handler) GetCalendarNotes(w http.ResponseWriter, r *http.Request) error {
@@ -317,46 +312,6 @@ func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func (h *Handler) LinkNotes(w http.ResponseWriter, r *http.Request) error {
-	userUuid, err := h.userUUIDFromContext(r)
-	if err != nil {
-		return err
-	}
-
-	sourceNoteUuid := r.PathValue("uuid")
-	targetNoteUuid := r.PathValue("target_uuid")
-	if sourceNoteUuid == "" || targetNoteUuid == "" {
-		return apperror.BadRequestError("empty note uuid")
-	}
-
-	if err = h.CategoryService.LinkNotes(r.Context(), sourceNoteUuid, targetNoteUuid, userUuid); err != nil {
-		return err
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-	return nil
-}
-
-func (h *Handler) UnlinkNotes(w http.ResponseWriter, r *http.Request) error {
-	userUuid, err := h.userUUIDFromContext(r)
-	if err != nil {
-		return err
-	}
-
-	sourceNoteUuid := r.PathValue("uuid")
-	targetNoteUuid := r.PathValue("target_uuid")
-	if sourceNoteUuid == "" || targetNoteUuid == "" {
-		return apperror.BadRequestError("empty note uuid")
-	}
-
-	if err = h.CategoryService.UnlinkNotes(r.Context(), sourceNoteUuid, targetNoteUuid, userUuid); err != nil {
-		return err
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-	return nil
-}
-
 func (h *Handler) userUUIDFromContext(r *http.Request) (string, error) {
 	rawUserUUID := r.Context().Value("user_uuid")
 	if rawUserUUID == nil {
@@ -415,11 +370,22 @@ func (h *Handler) syncCreatedNoteNode(
 	noteUuid string,
 	noteDTO noteclient.CreateNoteDTO,
 ) {
-	err := h.CategoryService.CreateNoteNode(r.Context(), categoryclient.CreateGraphNoteDTO{
+	createdDate, err := h.fetchNoteCreatedDate(r, userUuid, noteUuid)
+	if err != nil {
+		h.Logger.Warn(
+			"failed to fetch note created_date for graph sync",
+			"user_uuid", userUuid,
+			"note_uuid", noteUuid,
+			"error", err,
+		)
+	}
+
+	err = h.CategoryService.CreateNoteNode(r.Context(), categoryclient.CreateGraphNoteDTO{
 		Uuid:         noteUuid,
 		UserUuid:     userUuid,
 		CategoryUuid: noteDTO.CategoryUuid,
 		Header:       noteDTO.Header,
+		CreatedDate:  createdDate,
 	})
 	if err != nil {
 		h.Logger.Warn(
@@ -463,6 +429,20 @@ func (h *Handler) syncDeletedNoteNode(r *http.Request, userUuid string, noteUuid
 			"error", err,
 		)
 	}
+}
+
+func (h *Handler) fetchNoteCreatedDate(r *http.Request, userUuid, noteUUID string) (int64, error) {
+	noteData, err := h.NoteService.GetNote(r.Context(), noteUUID, userUuid)
+	if err != nil {
+		return 0, err
+	}
+
+	var note noteclient.Note
+	if err = json.Unmarshal(noteData, &note); err != nil {
+		return 0, fmt.Errorf("decode note for graph sync: %w", err)
+	}
+
+	return note.CreatedDate, nil
 }
 
 func (h *Handler) syncIndexedNote(r *http.Request, userUuid, noteUUID, action string) {

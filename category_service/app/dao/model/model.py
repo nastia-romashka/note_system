@@ -8,6 +8,7 @@ class Category(Base):
     name: str
     user_uuid: str | None = None
     color: str | None = None
+    created_at: int | None = None
     parent_uuid: str | None = None
     children: list["Category"] | None = None
 
@@ -21,6 +22,7 @@ class GraphNote(Base):
     user_uuid: str
     category_uuid: str
     header: str
+    created_date: int | None = None
 
 
 class GraphNode(Base):
@@ -29,6 +31,7 @@ class GraphNode(Base):
     label: str
     color: str | None = None
     category_uuid: str | None = None
+    created_at: int | None = None
 
 
 class GraphEdge(Base):

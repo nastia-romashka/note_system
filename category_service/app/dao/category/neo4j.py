@@ -27,8 +27,8 @@ class Neo4jCategoryDAO(CategoryDAO):
             """
             MATCH path = (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(c:Category)
             WHERE NOT (c)-[:CHILD]->(:Category)
-            WITH collect(path) AS ps
-            CALL apoc.convert.toTree(ps) YIELD value
+            WITH collect(path) AS paths
+            CALL apoc.paths.toJsonTree(paths) YIELD value
             RETURN value
             """,
             {"user_uuid": user_uuid},
@@ -56,99 +56,119 @@ class Neo4jCategoryDAO(CategoryDAO):
         return CategoryStats(categories_count=result[0]["categories_count"])
 
     def find_user_graph(self, user_uuid: str) -> GraphData:
-        result = self.storage.find(
+        category_rows = self.storage.find(
             """
-            MATCH (u:User {id: $user_uuid})
-            OPTIONAL MATCH (u)-[:OWN|CHILD*1..]->(category:Category)
-            WITH collect(DISTINCT category) AS categories
-            OPTIONAL MATCH (parent:Category)-[:CHILD]->(child:Category)
-            WHERE parent IN categories AND child IN categories
-            WITH
-                categories,
-                collect(DISTINCT CASE
-                    WHEN parent IS NULL OR child IS NULL THEN NULL
-                    ELSE {source: parent.id, target: child.id, type: "CHILD"}
-                END) AS raw_category_edges
-            OPTIONAL MATCH (category)-[:HAS_NOTE]->(note:Note {user_uuid: $user_uuid})
-            WHERE category IN categories
-            WITH
-                categories,
-                raw_category_edges,
-                collect(DISTINCT note) AS notes,
-                collect(DISTINCT CASE
-                    WHEN note IS NULL THEN NULL
-                    ELSE {source: category.id, target: note.uuid, type: "HAS_NOTE"}
-                END) AS raw_has_note_edges
-            OPTIONAL MATCH (source:Note {user_uuid: $user_uuid})-[link:LINKED_TO]->(target:Note {user_uuid: $user_uuid})
-            WHERE source IN notes AND target IN notes
-            WITH
-                categories,
-                notes,
-                raw_category_edges,
-                raw_has_note_edges,
-                collect(DISTINCT {
-                    source: source.uuid,
-                    target: target.uuid,
-                    type: type(link)
-                }) AS linked_note_edges
-            OPTIONAL MATCH (sourceEntity)-[custom:USER_LINK]->(targetEntity)
-            WHERE
-                (
-                    (sourceEntity:Category AND sourceEntity IN categories)
-                    OR
-                    (sourceEntity:Note AND sourceEntity IN notes)
-                )
-                AND
-                (
-                    (targetEntity:Category AND targetEntity IN categories)
-                    OR
-                    (targetEntity:Note AND targetEntity IN notes)
-                )
-            WITH
-                categories,
-                notes,
-                raw_category_edges,
-                raw_has_note_edges,
-                linked_note_edges,
-                collect(DISTINCT CASE
-                    WHEN sourceEntity IS NULL OR targetEntity IS NULL OR custom IS NULL THEN NULL
-                    ELSE {
-                        source: coalesce(sourceEntity.id, sourceEntity.uuid),
-                        target: coalesce(targetEntity.id, targetEntity.uuid),
-                        type: type(custom)
-                    }
-                END) AS custom_graph_edges
-            RETURN
-                [category IN categories WHERE category IS NOT NULL | {
-                    id: category.id,
-                    type: "category",
-                    label: category.name,
-                    color: category.color
-                }] AS category_nodes,
-                [note IN notes WHERE note IS NOT NULL | {
-                    id: note.uuid,
-                    type: "note",
-                    label: note.header,
-                    category_uuid: note.category_uuid
-                }] AS note_nodes,
-                [
-                    edge IN raw_category_edges + raw_has_note_edges + linked_note_edges + custom_graph_edges
-                    WHERE edge IS NOT NULL AND edge.source IS NOT NULL AND edge.target IS NOT NULL
-                    | edge
-                ] AS edges
+            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(category:Category)
+            RETURN DISTINCT
+                category.id AS id,
+                category.name AS label,
+                category.color AS color,
+                category.created_at AS created_at
             """,
             {"user_uuid": user_uuid},
         )
 
-        if not result:
+        if not category_rows:
             return GraphData(nodes=[], edges=[])
 
-        graph_data = result[0]
-        nodes = [
-            GraphNode(**node)
-            for node in graph_data.get("category_nodes", []) + graph_data.get("note_nodes", [])
+        category_nodes = [
+            GraphNode(
+                id=row["id"],
+                type="category",
+                label=row["label"],
+                color=row.get("color"),
+                created_at=row.get("created_at"),
+            )
+            for row in category_rows
         ]
-        edges = [GraphEdge(**edge) for edge in graph_data.get("edges", [])]
+        category_ids = [node.id for node in category_nodes]
+
+        category_edge_rows = self.storage.find(
+            """
+            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(parent:Category)-[:CHILD]->(child:Category)
+            RETURN DISTINCT
+                parent.id AS source,
+                child.id AS target,
+                "CHILD" AS type
+            """,
+            {"user_uuid": user_uuid},
+        )
+
+        note_rows = self.storage.find(
+            """
+            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(category:Category)-[:HAS_NOTE]->(note:Note {user_uuid: $user_uuid})
+            RETURN DISTINCT
+                category.id AS category_id,
+                note.uuid AS id,
+                note.header AS label,
+                note.category_uuid AS category_uuid,
+                note.created_date AS created_at
+            """,
+            {"user_uuid": user_uuid},
+        )
+
+        note_nodes = [
+            GraphNode(
+                id=row["id"],
+                type="note",
+                label=row["label"],
+                category_uuid=row.get("category_uuid"),
+                created_at=row.get("created_at"),
+            )
+            for row in note_rows
+        ]
+        note_ids = [node.id for node in note_nodes]
+
+        has_note_edge_rows = [
+            {
+                "source": row["category_id"],
+                "target": row["id"],
+                "type": "HAS_NOTE",
+            }
+            for row in note_rows
+            if row.get("category_id") and row.get("id")
+        ]
+
+        custom_graph_edge_rows = self.storage.find(
+            """
+            CALL {
+                WITH $category_ids AS category_ids
+                UNWIND category_ids AS category_id
+                MATCH (source:Category {id: category_id})-[custom:USER_LINK]->(target)
+                RETURN source, custom, target
+                UNION
+                WITH $note_ids AS note_ids
+                UNWIND note_ids AS note_id
+                MATCH (source:Note {uuid: note_id})-[custom:USER_LINK]->(target)
+                RETURN source, custom, target
+            }
+            WITH source, custom, target
+            WHERE
+                (target:Category AND target.id IN $category_ids)
+                OR
+                (target:Note AND target.uuid IN $note_ids)
+            RETURN DISTINCT
+                coalesce(source.id, source.uuid) AS source,
+                coalesce(target.id, target.uuid) AS target,
+                type(custom) AS type
+            """,
+            {
+                "category_ids": category_ids,
+                "note_ids": note_ids,
+            },
+        )
+
+        nodes = category_nodes + note_nodes
+        edge_rows = (
+            category_edge_rows
+            + has_note_edge_rows
+            + custom_graph_edge_rows
+        )
+        edges = [
+            GraphEdge(**edge)
+            for edge in edge_rows
+            if edge.get("source") and edge.get("target") and edge.get("type")
+        ]
         return GraphData(nodes=nodes, edges=edges)
 
     def check_user_exist(self, user_uuid: str) -> bool:
@@ -167,10 +187,11 @@ class Neo4jCategoryDAO(CategoryDAO):
                 name: $name,
                 id: randomUUID(),
                 user_uuid: $user_uuid,
-                color: $color
+                color: $color,
+                created_at: toInteger(timestamp() / 1000)
             })
             CREATE (u)-[:OWN]->(c)
-            RETURN c.id AS category_id
+            RETURN c.id AS category_id, c.created_at AS category_created_at
             """,
             {
                 "user_uuid": category.user_uuid,
@@ -184,6 +205,7 @@ class Neo4jCategoryDAO(CategoryDAO):
             name=category.name,
             user_uuid=category.user_uuid,
             color=color,
+            created_at=result[0].get("category_created_at"),
             parent_uuid=category.parent_uuid,
             children=None,
         )
@@ -230,10 +252,11 @@ class Neo4jCategoryDAO(CategoryDAO):
                 name: $name,
                 id: randomUUID(),
                 user_uuid: $user_uuid,
-                color: $color
+                color: $color,
+                created_at: toInteger(timestamp() / 1000)
             })
             CREATE (parent)-[:CHILD]->(c)
-            RETURN c.id AS category_id
+            RETURN c.id AS category_id, c.created_at AS category_created_at
             """,
             {
                 "user_uuid": category.user_uuid,
@@ -248,6 +271,7 @@ class Neo4jCategoryDAO(CategoryDAO):
             name=category.name,
             user_uuid=category.user_uuid,
             color=color,
+            created_at=result[0].get("category_created_at"),
             parent_uuid=category.parent_uuid,
             children=None,
         )
@@ -298,12 +322,15 @@ class Neo4jCategoryDAO(CategoryDAO):
             """
             MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(category:Category {id: $category_uuid})
             MERGE (note:Note {uuid: $note_uuid})
-            ON CREATE SET note.user_uuid = $user_uuid
+            ON CREATE SET
+                note.user_uuid = $user_uuid,
+                note.created_date = $created_date
             WITH category, note
             WHERE note.user_uuid = $user_uuid
             SET
                 note.category_uuid = $category_uuid,
-                note.header = $header
+                note.header = $header,
+                note.created_date = coalesce(note.created_date, $created_date)
             MERGE (category)-[:HAS_NOTE]->(note)
             WITH category, note
             MATCH (oldCategory:Category)-[oldRelation:HAS_NOTE]->(note)
@@ -315,6 +342,7 @@ class Neo4jCategoryDAO(CategoryDAO):
                 "user_uuid": note.user_uuid,
                 "category_uuid": note.category_uuid,
                 "header": note.header,
+                "created_date": note.created_date,
             },
         )
 
@@ -361,36 +389,6 @@ class Neo4jCategoryDAO(CategoryDAO):
             """,
             {
                 "note_uuid": note_uuid,
-                "user_uuid": user_uuid,
-            },
-        )
-
-    def link_notes(self, source_note_uuid: str, target_note_uuid: str, user_uuid: str) -> None:
-        self.storage.create(
-            """
-            MATCH (source:Note {uuid: $source_note_uuid, user_uuid: $user_uuid})
-            MATCH (target:Note {uuid: $target_note_uuid, user_uuid: $user_uuid})
-            WHERE source.uuid <> target.uuid
-            MERGE (source)-[:LINKED_TO]->(target)
-            """,
-            {
-                "source_note_uuid": source_note_uuid,
-                "target_note_uuid": target_note_uuid,
-                "user_uuid": user_uuid,
-            },
-        )
-
-    def unlink_notes(self, source_note_uuid: str, target_note_uuid: str, user_uuid: str) -> None:
-        self.storage.delete(
-            """
-            MATCH (source:Note {uuid: $source_note_uuid, user_uuid: $user_uuid})
-                -[relation:LINKED_TO]->
-                (target:Note {uuid: $target_note_uuid, user_uuid: $user_uuid})
-            DELETE relation
-            """,
-            {
-                "source_note_uuid": source_note_uuid,
-                "target_note_uuid": target_note_uuid,
                 "user_uuid": user_uuid,
             },
         )
@@ -484,6 +482,7 @@ class Neo4jCategoryDAO(CategoryDAO):
                     name=category_data["name"],
                     user_uuid=category_data.get("user_uuid"),
                     color=category_data.get("color"),
+                    created_at=category_data.get("created_at"),
                     parent_uuid=parent_uuid,
                     children=children if children else None,
                 )

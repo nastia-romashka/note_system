@@ -17,6 +17,7 @@ export default function CalendarPage({
   onChangeMonth,
   onToday,
   onOpenNote,
+  onOpenGraph,
   onOpenNotes,
   onOpenProfile,
 }) {
@@ -36,6 +37,9 @@ export default function CalendarPage({
           <h1>{currentMonth.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</h1>
         </div>
         <div className="calendar-actions">
+          <button className="secondary-button" type="button" onClick={onOpenGraph}>
+            Граф
+          </button>
           <button className="secondary-button" type="button" onClick={onOpenNotes}>
             Заметки
           </button>

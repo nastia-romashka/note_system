@@ -67,3 +67,10 @@ go.work.sum
 .gomodcache/
 .gocache-test/
 .gocache-local/
+
+# Local temporary workspace artifacts
+.tmp/
+.tmp_appdata/
+.tmp_localappdata/
+tmp_report*.docx
+tmp_report*.txt

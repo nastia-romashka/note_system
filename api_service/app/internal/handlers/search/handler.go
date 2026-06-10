@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	searchNotesURL   = "/api/search/notes"
 	searchReindexURL = "/api/search/reindex"
 )
 
@@ -33,31 +32,7 @@ type reindexResponse struct {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc(http.MethodGet+" "+searchNotesURL, jwt.JWTMiddleware(apperror.Middleware(h.SearchNotes)))
 	mux.HandleFunc(http.MethodPost+" "+searchReindexURL, jwt.JWTMiddleware(apperror.Middleware(h.ReindexNotes)))
-}
-
-func (h *Handler) SearchNotes(w http.ResponseWriter, r *http.Request) error {
-	userUUID, err := h.userUUIDFromContext(r)
-	if err != nil {
-		return err
-	}
-
-	notes, err := h.SearchService.SearchNotes(
-		r.Context(),
-		r.URL.Query().Get("q"),
-		userUUID,
-		r.URL.Query().Get("category_uuid"),
-		r.URL.Query()["tag_uuid"],
-	)
-	if err != nil {
-		return err
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(notes)
-	return nil
 }
 
 func (h *Handler) ReindexNotes(w http.ResponseWriter, r *http.Request) error {

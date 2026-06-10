@@ -35,7 +35,6 @@ type noteFile struct {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc(http.MethodGet+" "+categoriesURL, jwt.JWTMiddleware(apperror.Middleware(h.GetCategories)))
 	mux.HandleFunc(http.MethodPost+" "+categoriesURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateCategory)))
 	mux.HandleFunc(http.MethodPatch+" "+categoryURL, jwt.JWTMiddleware(apperror.Middleware(h.PartiallyUpdateCategory)))
 	mux.HandleFunc(http.MethodDelete+" "+categoryURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteCategory)))

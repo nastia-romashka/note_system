@@ -29,7 +29,7 @@ export async function request(path, options = {}) {
   if (!response.ok) {
     const errorData = await readSafeJson(response);
     throw new APIRequestError(
-      errorData?.developer_message || errorData?.message || "Р—Р°РїСЂРѕСЃ Р·Р°РІРµСЂС€РёР»СЃСЏ СЃ РѕС€РёР±РєРѕР№.",
+      errorData?.developer_message || errorData?.message || "Запрос завершился с ошибкой.",
       response.status,
     );
   }

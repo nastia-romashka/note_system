@@ -107,36 +107,6 @@ class CategoryService:
 
         self.category_dao.delete_note(note_uuid=note_uuid, user_uuid=user_uuid)
 
-    def link_notes(
-        self,
-        user_uuid: str,
-        source_note_uuid: str,
-        target_note_uuid: str,
-    ) -> None:
-        self._ensure_note_belongs_to_user(source_note_uuid, user_uuid)
-        self._ensure_note_belongs_to_user(target_note_uuid, user_uuid)
-
-        self.category_dao.link_notes(
-            source_note_uuid=source_note_uuid,
-            target_note_uuid=target_note_uuid,
-            user_uuid=user_uuid,
-        )
-
-    def unlink_notes(
-        self,
-        user_uuid: str,
-        source_note_uuid: str,
-        target_note_uuid: str,
-    ) -> None:
-        self._ensure_note_belongs_to_user(source_note_uuid, user_uuid)
-        self._ensure_note_belongs_to_user(target_note_uuid, user_uuid)
-
-        self.category_dao.unlink_notes(
-            source_note_uuid=source_note_uuid,
-            target_note_uuid=target_note_uuid,
-            user_uuid=user_uuid,
-        )
-
     def create_user_graph_link(self, link: CreateUserGraphLinkDTO) -> None:
         self._ensure_graph_entity_belongs_to_user(link.source_id, link.user_uuid)
         self._ensure_graph_entity_belongs_to_user(link.target_id, link.user_uuid)
@@ -164,14 +134,6 @@ class CategoryService:
             )
 
         return self.category_dao.check_category_exist(category_uuid=category_uuid)
-
-    def _ensure_note_belongs_to_user(self, note_uuid: str, user_uuid: str) -> None:
-        is_note_exist = self.category_dao.check_note_belongs_to_user(
-            note_uuid=note_uuid,
-            user_uuid=user_uuid,
-        )
-        if not is_note_exist:
-            raise NotFoundException(exc_data=AppError.NOTE_NOT_FOUND)
 
     def _ensure_graph_entity_belongs_to_user(self, entity_id: str, user_uuid: str) -> None:
         if self.category_dao.check_category_belongs_to_user(entity_id, user_uuid):

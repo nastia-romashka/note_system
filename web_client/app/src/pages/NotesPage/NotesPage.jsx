@@ -73,14 +73,14 @@ export default function NotesPage({
               </div>
             )}
           </div>
-          <button className="secondary-button" onClick={onOpenProfile} type="button">
-            Личный кабинет
-          </button>
           <button className="secondary-button" onClick={onOpenGraph} type="button">
             Граф
           </button>
           <button className="secondary-button" onClick={onOpenCalendar} type="button">
             Календарь
+          </button>
+          <button className="secondary-button" onClick={onOpenProfile} type="button">
+            Личный кабинет
           </button>
         </div>
       </header>

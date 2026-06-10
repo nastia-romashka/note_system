@@ -26,6 +26,7 @@ class CreateGraphNoteDTO(Base):
     user_uuid: str
     category_uuid: str
     header: str
+    created_date: int
 
 
 class UpdateGraphNoteDTO(Base):
@@ -35,10 +36,6 @@ class UpdateGraphNoteDTO(Base):
 
 
 class DeleteGraphNoteDTO(Base):
-    user_uuid: str
-
-
-class LinkGraphNotesDTO(Base):
     user_uuid: str
 
 

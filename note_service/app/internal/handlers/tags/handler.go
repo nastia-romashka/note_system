@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"note_service/internal/apperror"
 	"note_service/pkg/logging"
@@ -32,7 +33,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) GetTags(w http.ResponseWriter, r *http.Request) error {
-	tagUUIDs := r.URL.Query()["id"]
+	tagUUIDs := parseTagIDs(r.URL.Query()["id"])
 	userUUID, err := userUUIDFromQuery(r)
 	if err != nil {
 		return err
@@ -99,4 +100,23 @@ func userUUIDFromQuery(r *http.Request) (string, error) {
 	}
 
 	return userUUID, nil
+}
+
+func parseTagIDs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			result = append(result, part)
+		}
+	}
+
+	return result
 }

@@ -14,6 +14,7 @@ import (
 	userhandlers "user_service/internal/handlers/users"
 	userservice "user_service/internal/service/users"
 	"user_service/internal/storage/db"
+	"user_service/pkg/docs"
 	"user_service/pkg/logging"
 	"user_service/pkg/shutdown"
 )
@@ -36,6 +37,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"user_service"}`))
 	})
+	docs.Register(mux)
 
 	userHandler := userhandlers.Handler{
 		Logger:      logger,

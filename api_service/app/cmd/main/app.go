@@ -12,8 +12,8 @@ import (
 	"myproject/internal/handlers/auth"
 	"myproject/internal/handlers/categories"
 	"myproject/internal/handlers/files"
-	"myproject/internal/handlers/graph"
 	"myproject/internal/handlers/notes"
+	"myproject/internal/handlers/passthrough"
 	"myproject/internal/handlers/profile"
 	searchhandler "myproject/internal/handlers/search"
 	"myproject/internal/handlers/tags"
@@ -77,6 +77,14 @@ func main() {
 		cfg.SearchService.URL,
 		logger,
 	)
+	passthroughHandler := passthrough.NewHandler(
+		logger,
+		cfg.CategoryService.URL,
+		cfg.NoteService.URL,
+		cfg.UserService.URL,
+		cfg.SearchService.URL,
+	)
+	passthroughHandler.Register(router)
 	profileHandler := profile.Handler{
 		Logger:          logger,
 		UserService:     userService,
@@ -104,12 +112,6 @@ func main() {
 		ActionRecorder:  actionRecorder,
 	}
 	categoriesHandler.Register(router)
-
-	graphHandler := graph.Handler{
-		Logger:          logger,
-		CategoryService: categoryService,
-	}
-	graphHandler.Register(router)
 
 	notesHandler := notes.Handler{
 		Logger:          logger,

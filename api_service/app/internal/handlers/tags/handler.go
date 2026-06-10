@@ -24,27 +24,8 @@ type Handler struct {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc(http.MethodGet+" "+tagsURL, jwt.JWTMiddleware(apperror.Middleware(h.GetTags)))
 	mux.HandleFunc(http.MethodPost+" "+tagsURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateTag)))
 	mux.HandleFunc(http.MethodDelete+" "+tagURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteTag)))
-}
-
-func (h *Handler) GetTags(w http.ResponseWriter, r *http.Request) error {
-	w.Header().Set("Content-Type", "application/json")
-
-	userUuid, err := h.userUUIDFromContext(r)
-	if err != nil {
-		return err
-	}
-	tagUUIDs := r.URL.Query()["id"]
-	tags, err := h.NoteService.GetTags(r.Context(), tagUUIDs, userUuid)
-	if err != nil {
-		return err
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(tags)
-	return nil
 }
 
 func (h *Handler) CreateTag(w http.ResponseWriter, r *http.Request) error {

@@ -27,7 +27,7 @@ func NewService(baseURL string, resource string, logger logging.Logger) UserServ
 		base: rest.BaseClient{
 			BaseURL: baseURL,
 			HTTPClient: &http.Client{
-				Timeout: 10 * time.Second,
+				Timeout: 30 * time.Second,
 			},
 			Logger: logger,
 		},
@@ -65,7 +65,7 @@ func (c *client) CreateUser(ctx context.Context, dto CreateUserDTO) (string, err
 		return userUuid, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -104,7 +104,7 @@ func (c *client) GetUser(ctx context.Context, uuid string) (user User, err error
 		return user, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -144,7 +144,7 @@ func (c *client) GetProfile(ctx context.Context, uuid string) (profile UserProfi
 		return profile, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -189,7 +189,7 @@ func (c *client) UpdateProfile(ctx context.Context, uuid string, dto UpdateUserP
 		return fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -230,7 +230,7 @@ func (c *client) GetActions(ctx context.Context, uuid string, limit, offset int)
 		return nil, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -275,7 +275,7 @@ func (c *client) CreateAction(ctx context.Context, uuid string, dto CreateUserAc
 		return fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -315,7 +315,7 @@ func (c *client) Authenticate(ctx context.Context, dto AuthUserDTO) (user User, 
 		return user, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -360,7 +360,7 @@ func (c *client) CreateSession(ctx context.Context, dto CreateUserSessionDTO) er
 		return fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -400,7 +400,7 @@ func (c *client) RotateSession(ctx context.Context, dto RotateUserSessionDTO) (s
 		return session, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -445,7 +445,7 @@ func (c *client) RevokeSession(ctx context.Context, refreshTokenHash string) err
 		return fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 

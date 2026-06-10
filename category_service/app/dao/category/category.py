@@ -70,14 +70,6 @@ class CategoryDAO(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def link_notes(self, source_note_uuid: str, target_note_uuid: str, user_uuid: str) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def unlink_notes(self, source_note_uuid: str, target_note_uuid: str, user_uuid: str) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
     def create_user_graph_link(self, link: CreateUserGraphLinkDTO) -> None:
         raise NotImplementedError
 

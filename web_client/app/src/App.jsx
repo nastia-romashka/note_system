@@ -241,6 +241,7 @@ function App() {
           }
           onToday={openTodayInCalendar}
           onOpenNote={calendarData.openNote}
+          onOpenGraph={() => setPage("graph")}
           onOpenNotes={() => setPage("notes")}
           onOpenProfile={() => setPage("profile")}
         />

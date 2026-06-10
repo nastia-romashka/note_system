@@ -4,6 +4,7 @@ type Category struct {
 	Uuid       string     `json:"uuid"`
 	Name       string     `json:"name"`
 	Color      string     `json:"color,omitempty"`
+	CreatedAt  int64      `json:"created_at,omitempty"`
 	UserUuid   string     `json:"user_uuid,omitempty"`
 	ParentUuid string     `json:"parent_uuid,omitempty"`
 	Children   []Category `json:"children,omitempty"`
@@ -38,6 +39,7 @@ type GraphNode struct {
 	Label        string `json:"label"`
 	Color        string `json:"color,omitempty"`
 	CategoryUuid string `json:"category_uuid,omitempty"`
+	CreatedAt    int64  `json:"created_at,omitempty"`
 }
 
 type GraphEdge struct {
@@ -56,6 +58,7 @@ type CreateGraphNoteDTO struct {
 	UserUuid     string `json:"user_uuid"`
 	CategoryUuid string `json:"category_uuid"`
 	Header       string `json:"header"`
+	CreatedDate  int64  `json:"created_date"`
 }
 
 type UpdateGraphNoteDTO struct {
@@ -65,10 +68,6 @@ type UpdateGraphNoteDTO struct {
 }
 
 type DeleteGraphNoteDTO struct {
-	UserUuid string `json:"user_uuid"`
-}
-
-type LinkGraphNotesDTO struct {
 	UserUuid string `json:"user_uuid"`
 }
 
