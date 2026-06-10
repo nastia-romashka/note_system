@@ -4,6 +4,8 @@ Go microservice for users. It exposes the same HTTP API as before, but stores us
 
 - application code: `app/`
 - database migrations: `migrations/`
-- local runtime/config files: `config.yml`, `app_test.http`, `Dockerfile`
+- local runtime/config files: `config.yml`, `Dockerfile`
 - main package: `app/cmd/main`
 - layers: `app/internal/handlers/users`, `app/internal/service/users`, `app/internal/storage/db`
+- Swagger UI: `/swagger`
+- OpenAPI schema: `/openapi.json`

@@ -28,21 +28,21 @@ const (
 	findUserByIDQuery = `
 		SELECT id::text, username, email, password_hash, created_at
 		FROM users
-		WHERE id = $1 AND is_active = true
+		WHERE id = $1 AND status = 'active'
 		LIMIT 1
 	`
 
 	findUserByUsernameQuery = `
 		SELECT id::text, username, email, password_hash, created_at
 		FROM users
-		WHERE username = $1 AND is_active = true
+		WHERE username = $1 AND status = 'active'
 		LIMIT 1
 	`
 
 	findUserProfileQuery = `
 		SELECT id::text, username, email, created_at, last_login_at
 		FROM users
-		WHERE id = $1 AND is_active = true
+		WHERE id = $1 AND status = 'active'
 		LIMIT 1
 	`
 
@@ -147,14 +147,27 @@ func (s *Storage) Create(user handlermodel.User) (userUUID string, err error) {
 	_, err = tx.Exec(
 		ctx,
 		`
-			INSERT INTO user_settings (user_id)
+			INSERT INTO user_profiles (user_id)
 			VALUES ($1)
 			ON CONFLICT (user_id) DO NOTHING
 		`,
 		userUUID,
 	)
 	if err != nil {
-		return "", fmt.Errorf("insert user settings: %w", err)
+		return "", fmt.Errorf("insert user profile: %w", err)
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`
+			INSERT INTO user_preferences (user_id)
+			VALUES ($1)
+			ON CONFLICT (user_id) DO NOTHING
+		`,
+		userUUID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("insert user preferences: %w", err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
@@ -213,9 +226,8 @@ func (s *Storage) UpdateProfile(userUUID, username, email, passwordHash string) 
 		SET
 			username = $2,
 			email = $3,
-			password_hash = CASE WHEN $4 <> '' THEN $4 ELSE password_hash END,
-			updated_at = now()
-		WHERE id = $1 AND is_active = true
+			password_hash = CASE WHEN $4 <> '' THEN $4 ELSE password_hash END
+		WHERE id = $1 AND status = 'active'
 	`
 
 	result, err := s.pool.Exec(ctx, query, userUUID, username, email, passwordHash)
@@ -244,8 +256,8 @@ func (s *Storage) UpdateLastLogin(userUUID string) (err error) {
 		ctx,
 		`
 			UPDATE users
-			SET last_login_at = now(), updated_at = now()
-			WHERE id = $1 AND is_active = true
+			SET last_login_at = now()
+			WHERE id = $1 AND status = 'active'
 		`,
 		userUUID,
 	)
