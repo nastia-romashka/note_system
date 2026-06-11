@@ -72,3 +72,13 @@ class CategoryDAO(ABC):
     @abstractmethod
     def delete_user_graph_link(self, link: DeleteUserGraphLinkDTO) -> None:
         raise NotImplementedError
+
+    @abstractmethod
+    def ensure_workspace_member(
+        self,
+        workspace_id: str,
+        user_uuid: str,
+        workspace_name: str | None = None,
+        workspace_type: str | None = None,
+    ) -> None:
+        raise NotImplementedError

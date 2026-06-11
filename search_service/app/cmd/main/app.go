@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"search_service/internal/config"
+	"search_service/internal/events"
 	notehandlers "search_service/internal/handlers/notes"
 	"search_service/internal/service"
 	"search_service/internal/typesense"
@@ -41,6 +43,16 @@ func main() {
 		NoteService: service.NewNotesService(repo),
 	}
 	noteHandler.Register(mux)
+
+	consumer := events.NewConsumer(cfg, logger, noteHandler.NoteService)
+	if err = consumer.Start(context.Background()); err != nil {
+		logger.Fatal("failed to start search domain events consumer", "error", err)
+	}
+	defer func() {
+		if closeErr := consumer.Close(); closeErr != nil {
+			logger.Warn("failed to close search domain events consumer", "error", closeErr)
+		}
+	}()
 
 	start(mux, logger, cfg)
 }

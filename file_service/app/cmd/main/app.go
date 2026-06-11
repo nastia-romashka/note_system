@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"file_service/internal/config"
+	"file_service/internal/events"
 	filehandlers "file_service/internal/handlers/files"
 	fileservice "file_service/internal/service/files"
 	miniostorage "file_service/internal/storage/minio"
@@ -24,6 +25,12 @@ func main() {
 	logger.Info("file_service starting")
 
 	cfg := config.GetConfig()
+	publisher := events.NewPublisher(cfg, logger)
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			logger.Warn("failed to close file event publisher", "error", err)
+		}
+	}()
 
 	storage, err := miniostorage.NewStorage(
 		cfg.Minio.Endpoint,
@@ -51,6 +58,7 @@ func main() {
 			storage,
 			logger,
 			cfg.Upload.MaxFileSizeMB*1024*1024,
+			publisher,
 		),
 	}
 	fileHandler.Register(mux)

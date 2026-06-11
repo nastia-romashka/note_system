@@ -1,22 +1,31 @@
 package notes
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"note_service/internal/apperror"
+	"note_service/internal/events"
 	handlermodel "note_service/internal/handlers/notes"
 	"note_service/internal/storage"
+	"note_service/pkg/logging"
 )
 
 type service struct {
-	storage storage.Storage
+	storage   storage.Storage
+	publisher events.Publisher
+	logger    logging.Logger
 }
 
-func NewService(storage storage.Storage) *service {
-	return &service{storage: storage}
+func NewService(storage storage.Storage, publisher events.Publisher, logger logging.Logger) *service {
+	return &service{
+		storage:   storage,
+		publisher: publisher,
+		logger:    logger.With("layer", "notes_service"),
+	}
 }
 
 func (s *service) GetOne(noteUUID, userUUID, workspaceID string) (note handlermodel.Note, err error) {
@@ -159,6 +168,15 @@ func (s *service) Create(dto handlermodel.CreateNoteDTO) (noteUUID string, err e
 		return "", fmt.Errorf("create note: %w", err)
 	}
 
+	if publishErr := s.publishNoteCreated(context.Background(), noteUUID, dto.UserUuid, workspaceID); publishErr != nil {
+		s.logger.Warn(
+			"failed to publish note.created event",
+			"note_uuid", noteUUID,
+			"workspace_id", workspaceID,
+			"error", publishErr,
+		)
+	}
+
 	return noteUUID, nil
 }
 
@@ -229,6 +247,15 @@ func (s *service) Update(
 		return fmt.Errorf("update note: %w", err)
 	}
 
+	if publishErr := s.publishNoteUpdated(context.Background(), noteUUID, userUUID, workspaceID); publishErr != nil {
+		s.logger.Warn(
+			"failed to publish note.updated event",
+			"note_uuid", noteUUID,
+			"workspace_id", workspaceID,
+			"error", publishErr,
+		)
+	}
+
 	return nil
 }
 
@@ -257,15 +284,29 @@ func (s *service) Delete(noteUUID, userUUID, workspaceID string) (err error) {
 		return apperror.BadRequestError("workspace_id is required")
 	}
 
+	normalizedWorkspaceID := strings.TrimSpace(workspaceID)
 	err = s.storage.Delete(noteUUID, storage.Scope{
 		UserUUID:    userUUID,
-		WorkspaceID: strings.TrimSpace(workspaceID),
+		WorkspaceID: normalizedWorkspaceID,
 	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return err
 		}
 		return fmt.Errorf("delete note: %w", err)
+	}
+
+	if publishErr := s.publisher.PublishNoteDeleted(context.Background(), events.NoteDeletedPayload{
+		NoteUUID:    noteUUID,
+		UserUUID:    userUUID,
+		WorkspaceID: normalizedWorkspaceID,
+	}); publishErr != nil {
+		s.logger.Warn(
+			"failed to publish note.deleted event",
+			"note_uuid", noteUUID,
+			"workspace_id", normalizedWorkspaceID,
+			"error", publishErr,
+		)
 	}
 
 	return nil
@@ -283,4 +324,41 @@ func makeShortBody(body string) string {
 	}
 
 	return body[:117] + "..."
+}
+
+func (s *service) publishNoteUpdated(ctx context.Context, noteUUID, userUUID, workspaceID string) error {
+	note, err := s.loadNoteForEvent(noteUUID, userUUID, workspaceID)
+	if err != nil {
+		return err
+	}
+
+	if err = s.publisher.PublishNoteUpdated(ctx, note); err != nil {
+		return fmt.Errorf("publish note.updated: %w", err)
+	}
+
+	return nil
+}
+
+func (s *service) publishNoteCreated(ctx context.Context, noteUUID, userUUID, workspaceID string) error {
+	note, err := s.loadNoteForEvent(noteUUID, userUUID, workspaceID)
+	if err != nil {
+		return err
+	}
+
+	if err = s.publisher.PublishNoteCreated(ctx, note); err != nil {
+		return fmt.Errorf("publish note.created: %w", err)
+	}
+
+	return nil
+}
+
+func (s *service) loadNoteForEvent(noteUUID, userUUID, workspaceID string) (handlermodel.Note, error) {
+	note, err := s.storage.FindOne(noteUUID, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
+	if err != nil {
+		return handlermodel.Note{}, fmt.Errorf("load note for event: %w", err)
+	}
+	return note, nil
 }

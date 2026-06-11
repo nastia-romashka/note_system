@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"user_service/internal/config"
+	"user_service/internal/events"
 	userhandlers "user_service/internal/handlers/users"
 	userservice "user_service/internal/service/users"
 	"user_service/internal/storage/db"
@@ -24,6 +25,12 @@ func main() {
 	logger := logging.GetLogger()
 	logger.Info("user_service starting")
 	cfg := config.GetConfig()
+	publisher := events.NewPublisher(cfg, logger)
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			logger.Warn("failed to close user event publisher", "error", err)
+		}
+	}()
 
 	storage, err := db.NewStorage(cfg)
 	if err != nil {
@@ -40,8 +47,9 @@ func main() {
 	docs.Register(mux)
 
 	userHandler := userhandlers.Handler{
-		Logger:      logger,
-		UserService: userservice.NewService(storage),
+		Logger:         logger,
+		UserService:    userservice.NewService(storage),
+		EventPublisher: publisher,
 	}
 	userHandler.Register(mux)
 

@@ -20,6 +20,11 @@ type Config struct {
 		UseSSL    bool   `yaml:"use_ssl" env:"FILE_SERVICE_MINIO_USE_SSL" env-default:"false"`
 		Bucket    string `yaml:"bucket" env:"FILE_SERVICE_MINIO_BUCKET" env-default:"notes-files"`
 	} `yaml:"minio"`
+	RabbitMQ struct {
+		Enabled  bool   `yaml:"enabled" env:"FILE_SERVICE_RABBITMQ_ENABLED" env-default:"false"`
+		URL      string `yaml:"url" env:"FILE_SERVICE_RABBITMQ_URL" env-default:"amqp://guest:guest@localhost:5672/"`
+		Exchange string `yaml:"exchange" env:"FILE_SERVICE_RABBITMQ_EXCHANGE" env-default:"notes.events"`
+	} `yaml:"rabbitmq"`
 	Listen struct {
 		Type   string `yaml:"type" env:"FILE_SERVICE_LISTEN_TYPE" env-default:"port"`
 		BindIP string `yaml:"bind_ip" env:"FILE_SERVICE_BIND_IP" env-default:"127.0.0.1"`
@@ -51,6 +56,7 @@ func GetConfig() *Config {
 			"minio_endpoint", instance.Minio.Endpoint,
 			"minio_bucket", instance.Minio.Bucket,
 			"max_file_size_mb", instance.Upload.MaxFileSizeMB,
+			"rabbitmq_enabled", instance.RabbitMQ.Enabled,
 		)
 	})
 

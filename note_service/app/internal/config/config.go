@@ -22,6 +22,12 @@ type Config struct {
 		Database   string `yaml:"database" env:"NOTE_SERVICE_MONGO_DATABASE" env-default:"notes_system"`
 		Collection string `yaml:"collection" env:"NOTE_SERVICE_MONGO_COLLECTION" env-default:"notes"`
 	} `yaml:"mongo"`
+	RabbitMQ struct {
+		Enabled               bool   `yaml:"enabled" env:"NOTE_SERVICE_RABBITMQ_ENABLED" env-default:"false"`
+		URL                   string `yaml:"url" env:"NOTE_SERVICE_RABBITMQ_URL" env-default:"amqp://guest:guest@localhost:5672/"`
+		Exchange              string `yaml:"exchange" env:"NOTE_SERVICE_RABBITMQ_EXCHANGE" env-default:"notes.events"`
+		NoteUpdatedRoutingKey string `yaml:"note_updated_routing_key" env:"NOTE_SERVICE_RABBITMQ_NOTE_UPDATED_ROUTING_KEY" env-default:"note.updated"`
+	} `yaml:"rabbitmq"`
 	Listen struct {
 		Type   string `yaml:"type" env:"NOTE_SERVICE_LISTEN_TYPE" env-default:"port"`
 		BindIP string `yaml:"bind_ip" env:"NOTE_SERVICE_BIND_IP" env-default:"127.0.0.1"`
@@ -48,6 +54,7 @@ func GetConfig() *Config {
 			"address", instance.Listen.BindIP+":"+instance.Listen.Port,
 			"mongo", instance.Mongo.Host+":"+instance.Mongo.Port,
 			"database", instance.Mongo.Database,
+			"rabbitmq_enabled", instance.RabbitMQ.Enabled,
 		)
 	})
 

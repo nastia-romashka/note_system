@@ -8,6 +8,11 @@ mongo:
   auth_source: admin
   database: notes_system
   collection: notes
+rabbitmq:
+  enabled: false
+  url: amqp://guest:guest@localhost:5672/
+  exchange: notes.events
+  note_updated_routing_key: note.updated
 listen:
   type: port
   bind_ip: localhost

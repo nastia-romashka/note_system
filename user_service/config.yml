@@ -6,6 +6,10 @@ postgres:
   password: notes_password
   database: users_system
   ssl_mode: disable
+rabbitmq:
+  enabled: false
+  url: amqp://guest:guest@localhost:5672/
+  exchange: notes.events
 listen:
   type: port
   bind_ip: localhost

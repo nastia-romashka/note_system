@@ -3,6 +3,16 @@ typesense:
   url: http://localhost:8108
   api_key: local-typesense-api-key
   collection: notes
+rabbitmq:
+  enabled: false
+  url: amqp://guest:guest@localhost:5672/
+  exchange: notes.events
+note_service:
+  url: http://localhost:8082/api
+category_service:
+  url: http://localhost:8081/api
+file_service:
+  url: http://localhost:8085
 listen:
   type: port
   bind_ip: localhost

@@ -174,6 +174,12 @@ async def update_category(
 ) -> Response:
     category_dto = category_dto.model_copy(update={"uuid": cuuid})
     service.update_category(category=category_dto)
+    request.app.state.category_events_publisher.publish_category_updated(
+        category_uuid=cuuid,
+        workspace_id=category_dto.workspace_id,
+        actor_user_uuid=category_dto.actor_user_uuid,
+        name=category_dto.name,
+    )
     request.app.state.logger.debug("updated category uuid=%s", cuuid)
     return Response(status_code=HTTPStatus.NO_CONTENT)
 

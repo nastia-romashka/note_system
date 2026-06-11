@@ -12,11 +12,9 @@ import (
 	categoryclient "myproject/internal/client/category"
 	fileclient "myproject/internal/client/file"
 	noteclient "myproject/internal/client/note"
-	searchclient "myproject/internal/client/search"
 	userclient "myproject/internal/client/user"
 	"myproject/internal/handlers/actionlog"
 	"myproject/internal/requestctx"
-	"myproject/internal/searchsync"
 	"myproject/pkg/logging"
 	"myproject/pkg/middleware/jwt"
 	workspacemw "myproject/pkg/middleware/workspace"
@@ -46,7 +44,6 @@ type Handler struct {
 	CategoryService  categoryclient.CategoryService
 	FileService      fileclient.FileService
 	NoteService      noteclient.NoteService
-	SearchService    searchclient.SearchService
 	WorkspaceService userclient.UserService
 	ActionRecorder   actionlog.Recorder
 }
@@ -129,6 +126,7 @@ func (h *Handler) CreateNote(w http.ResponseWriter, r *http.Request) error {
 		return apperror.BadRequestError("can't decode")
 	}
 	defer r.Body.Close()
+
 	userUuid, err := h.userUUIDFromContext(r)
 	if err != nil {
 		return err
@@ -140,6 +138,7 @@ func (h *Handler) CreateNote(w http.ResponseWriter, r *http.Request) error {
 	if err = h.ensureCategoryInWorkspace(r, workspaceID, crNote.CategoryUuid); err != nil {
 		return err
 	}
+
 	crNote.UserUuid = userUuid
 	crNote.WorkspaceID = workspaceID
 	crNote.AuthorUserUUID = userUuid
@@ -148,8 +147,7 @@ func (h *Handler) CreateNote(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	h.syncCreatedNoteNode(r, userUuid, noteUuid, crNote)
-	h.syncIndexedNote(r, userUuid, noteUuid, "create")
+
 	h.ActionRecorder.Record(r, userUuid, "note.created", "note", noteUuid, map[string]any{
 		"category_uuid": crNote.CategoryUuid,
 		"header":        crNote.Header,
@@ -241,8 +239,6 @@ func (h *Handler) DuplicateNote(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	h.syncCreatedNoteNode(r, userUUID, newNoteUUID, createDTO)
-
 	if err = h.duplicateNoteFiles(r, userUUID, workspaceID, sourceNoteUUID, newNoteUUID); err != nil {
 		h.Logger.Warn(
 			"failed to duplicate note files, rolling back duplicated note",
@@ -254,7 +250,6 @@ func (h *Handler) DuplicateNote(w http.ResponseWriter, r *http.Request) error {
 		h.rollbackDuplicatedNote(r, userUUID, workspaceID, newNoteUUID)
 		return err
 	}
-	h.syncIndexedNote(r, userUUID, newNoteUUID, "duplicate_files")
 
 	h.ActionRecorder.Record(r, userUUID, "note.created", "note", newNoteUUID, map[string]any{
 		"category_uuid":    req.CategoryUuid,
@@ -305,8 +300,7 @@ func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) er
 	if err := h.NoteService.UpdateNote(r.Context(), noteUuid, userUuid, workspaceID, n); err != nil {
 		return err
 	}
-	h.syncUpdatedNoteNode(r, userUuid, noteUuid, n)
-	h.syncIndexedNote(r, userUuid, noteUuid, "update")
+
 	h.ActionRecorder.Record(r, userUuid, "note.updated", "note", noteUuid, map[string]any{
 		"category_uuid": n.CategoryUuid,
 		"header":        n.Header,
@@ -334,8 +328,7 @@ func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
 	if err := h.NoteService.DeleteNote(r.Context(), noteUuid, userUuid, workspaceID); err != nil {
 		return err
 	}
-	h.syncDeletedNoteNode(r, userUuid, noteUuid)
-	h.syncDeletedIndex(r, userUuid, noteUuid)
+
 	h.ActionRecorder.Record(r, userUuid, "note.deleted", "note", noteUuid, nil)
 
 	w.WriteHeader(http.StatusNoContent)
@@ -394,219 +387,6 @@ func containsCategory(categories []categoryclient.Category, categoryUuid string)
 	return false
 }
 
-func (h *Handler) syncCreatedNoteNode(
-	r *http.Request,
-	userUuid string,
-	noteUuid string,
-	noteDTO noteclient.CreateNoteDTO,
-) {
-	createdDate, err := h.fetchNoteCreatedDate(r, userUuid, noteUuid)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch note created_date for graph sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUuid,
-			"error", err,
-		)
-	}
-
-	err = h.CategoryService.CreateNoteNode(r.Context(), categoryclient.CreateGraphNoteDTO{
-		Uuid:           noteUuid,
-		WorkspaceID:    noteDTO.WorkspaceID,
-		WorkspaceName:  requestctx.WorkspaceName(r),
-		WorkspaceType:  requestctx.WorkspaceType(r),
-		AuthorUserUUID: userUuid,
-		CategoryUuid:   noteDTO.CategoryUuid,
-		Header:         noteDTO.Header,
-		CreatedDate:    createdDate,
-	})
-	if err != nil {
-		h.Logger.Warn(
-			"failed to sync created note node",
-			"user_uuid", userUuid,
-			"note_uuid", noteUuid,
-			"category_uuid", noteDTO.CategoryUuid,
-			"error", err,
-		)
-	}
-}
-
-func (h *Handler) syncUpdatedNoteNode(
-	r *http.Request,
-	userUuid string,
-	noteUuid string,
-	noteDTO noteclient.UpdateNoteDTO,
-) {
-	err := h.CategoryService.UpdateNoteNode(r.Context(), noteUuid, categoryclient.UpdateGraphNoteDTO{
-		WorkspaceID:  noteDTO.WorkspaceID,
-		CategoryUuid: noteDTO.CategoryUuid,
-		Header:       noteDTO.Header,
-	})
-	if err != nil {
-		h.Logger.Warn(
-			"failed to sync updated note node",
-			"user_uuid", userUuid,
-			"note_uuid", noteUuid,
-			"category_uuid", noteDTO.CategoryUuid,
-			"error", err,
-		)
-	}
-}
-
-func (h *Handler) syncDeletedNoteNode(r *http.Request, userUuid string, noteUuid string) {
-	workspaceID, workspaceErr := h.workspaceIDFromContext(r)
-	if workspaceErr != nil {
-		h.Logger.Warn(
-			"failed to resolve workspace for deleted note graph sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUuid,
-			"error", workspaceErr,
-		)
-		return
-	}
-
-	if err := h.CategoryService.DeleteNoteNode(r.Context(), noteUuid, workspaceID); err != nil {
-		h.Logger.Warn(
-			"failed to sync deleted note node",
-			"user_uuid", userUuid,
-			"note_uuid", noteUuid,
-			"error", err,
-		)
-	}
-}
-
-func (h *Handler) fetchNoteCreatedDate(r *http.Request, userUuid, noteUUID string) (int64, error) {
-	workspaceID, err := h.workspaceIDFromContext(r)
-	if err != nil {
-		return 0, err
-	}
-
-	noteData, err := h.NoteService.GetNote(r.Context(), noteUUID, userUuid, workspaceID)
-	if err != nil {
-		return 0, err
-	}
-
-	var note noteclient.Note
-	if err = json.Unmarshal(noteData, &note); err != nil {
-		return 0, fmt.Errorf("decode note for graph sync: %w", err)
-	}
-
-	return note.CreatedDate, nil
-}
-
-func (h *Handler) syncIndexedNote(r *http.Request, userUuid, noteUUID, action string) {
-	workspaceID, err := h.workspaceIDFromContext(r)
-	if err != nil {
-		h.Logger.Warn("failed to resolve workspace for search sync", "user_uuid", userUuid, "note_uuid", noteUUID, "action", action, "error", err)
-		return
-	}
-
-	noteData, err := h.NoteService.GetNote(r.Context(), noteUUID, userUuid, workspaceID)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch note for search sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-		return
-	}
-
-	var note noteclient.Note
-	if err = json.Unmarshal(noteData, &note); err != nil {
-		h.Logger.Warn(
-			"failed to decode note for search sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-		return
-	}
-
-	categoryData, err := h.CategoryService.GetWorkspaceCategories(r.Context(), workspaceID)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch categories for search sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-		return
-	}
-
-	var categories []categoryclient.Category
-	if err = json.Unmarshal(categoryData, &categories); err != nil {
-		h.Logger.Warn(
-			"failed to decode categories for search sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-		return
-	}
-
-	tags, err := h.fetchTagsForNotes(r, userUuid, workspaceID, []noteclient.Note{note})
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch tags for search sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-		return
-	}
-
-	filesByNote, err := h.fetchFilesForNotes(r, userUuid, workspaceID, []noteclient.Note{note})
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch files for search sync",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-		return
-	}
-
-	document, err := searchsync.BuildIndexedNote(note, categories, tags, filesByNote[note.Uuid])
-	if err != nil {
-		h.Logger.Warn(
-			"failed to build indexed note document",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-		return
-	}
-
-	if err = h.SearchService.UpsertNote(r.Context(), document); err != nil {
-		h.Logger.Warn(
-			"failed to sync note to search index",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"action", action,
-			"error", err,
-		)
-	}
-}
-
-func (h *Handler) syncDeletedIndex(r *http.Request, userUuid, noteUUID string) {
-	if err := h.SearchService.DeleteNote(r.Context(), noteUUID); err != nil {
-		h.Logger.Warn(
-			"failed to delete note from search index",
-			"user_uuid", userUuid,
-			"note_uuid", noteUUID,
-			"error", err,
-		)
-	}
-}
-
 func (h *Handler) duplicateNoteFiles(r *http.Request, userUUID, workspaceID, sourceNoteUUID, targetNoteUUID string) error {
 	filesData, err := h.FileService.GetNoteFiles(r.Context(), sourceNoteUUID, userUUID, workspaceID)
 	if err != nil {
@@ -662,8 +442,6 @@ func (h *Handler) rollbackDuplicatedNote(r *http.Request, userUUID, workspaceID,
 			"error", err,
 		)
 	}
-	h.syncDeletedNoteNode(r, userUUID, noteUUID)
-	h.syncDeletedIndex(r, userUUID, noteUUID)
 }
 
 func (h *Handler) cleanupDuplicatedNoteFiles(r *http.Request, userUUID, workspaceID, noteUUID string) {
@@ -690,45 +468,6 @@ func (h *Handler) cleanupDuplicatedNoteFiles(r *http.Request, userUUID, workspac
 			)
 		}
 	}
-}
-
-func (h *Handler) fetchTagsForNotes(r *http.Request, userUuid, workspaceID string, notes []noteclient.Note) ([]noteclient.Tag, error) {
-	tagUUIDs := searchsync.CollectTagUUIDs(notes)
-	if len(tagUUIDs) == 0 {
-		return nil, nil
-	}
-
-	tagsData, err := h.NoteService.GetTags(r.Context(), tagUUIDs, userUuid, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-
-	var tags []noteclient.Tag
-	if err = json.Unmarshal(tagsData, &tags); err != nil {
-		return nil, fmt.Errorf("decode tags response: %w", err)
-	}
-
-	return tags, nil
-}
-
-func (h *Handler) fetchFilesForNotes(r *http.Request, userUuid, workspaceID string, notes []noteclient.Note) (map[string][]fileclient.FileInfo, error) {
-	filesByNote := make(map[string][]fileclient.FileInfo, len(notes))
-
-	for _, note := range notes {
-		filesData, err := h.FileService.GetNoteFiles(r.Context(), note.Uuid, userUuid, workspaceID)
-		if err != nil {
-			return nil, fmt.Errorf("fetch files for note %s: %w", note.Uuid, err)
-		}
-
-		var files []fileclient.FileInfo
-		if err = json.Unmarshal(filesData, &files); err != nil {
-			return nil, fmt.Errorf("decode files response for note %s: %w", note.Uuid, err)
-		}
-
-		filesByNote[note.Uuid] = files
-	}
-
-	return filesByNote, nil
 }
 
 func safeFileName(name, fallback string) string {

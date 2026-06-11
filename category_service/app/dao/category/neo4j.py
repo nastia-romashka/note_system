@@ -477,6 +477,30 @@ class Neo4jCategoryDAO(CategoryDAO):
             },
         )
 
+    def ensure_workspace_member(
+        self,
+        workspace_id: str,
+        user_uuid: str,
+        workspace_name: str | None = None,
+        workspace_type: str | None = None,
+    ) -> None:
+        self.storage.create(
+            """
+            MERGE (workspace:Workspace {id: $workspace_id})
+            SET
+                workspace.name = coalesce($workspace_name, workspace.name),
+                workspace.type = coalesce($workspace_type, workspace.type)
+            MERGE (user:User {id: $user_uuid})
+            MERGE (user)-[:MEMBER_OF]->(workspace)
+            """,
+            {
+                "workspace_id": workspace_id,
+                "workspace_name": workspace_name,
+                "workspace_type": workspace_type,
+                "user_uuid": user_uuid,
+            },
+        )
+
     def _check_entity_exist(
         self,
         entity: str,

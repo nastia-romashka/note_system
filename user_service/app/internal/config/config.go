@@ -20,6 +20,11 @@ type Config struct {
 		Database string `yaml:"database" env:"USER_SERVICE_POSTGRES_DATABASE" env-default:"users_system"`
 		SSLMode  string `yaml:"ssl_mode" env:"USER_SERVICE_POSTGRES_SSL_MODE" env-default:"disable"`
 	} `yaml:"postgres"`
+	RabbitMQ struct {
+		Enabled  bool   `yaml:"enabled" env:"USER_SERVICE_RABBITMQ_ENABLED" env-default:"false"`
+		URL      string `yaml:"url" env:"USER_SERVICE_RABBITMQ_URL" env-default:"amqp://guest:guest@localhost:5672/"`
+		Exchange string `yaml:"exchange" env:"USER_SERVICE_RABBITMQ_EXCHANGE" env-default:"notes.events"`
+	} `yaml:"rabbitmq"`
 	Listen struct {
 		Type   string `yaml:"type" env:"USER_SERVICE_LISTEN_TYPE" env-default:"port"`
 		BindIP string `yaml:"bind_ip" env:"USER_SERVICE_BIND_IP" env-default:"127.0.0.1"`
@@ -46,6 +51,7 @@ func GetConfig() *Config {
 			"address", instance.Listen.BindIP+":"+instance.Listen.Port,
 			"postgres", instance.Postgres.Host+":"+instance.Postgres.Port,
 			"database", instance.Postgres.Database,
+			"rabbitmq_enabled", instance.RabbitMQ.Enabled,
 		)
 	})
 

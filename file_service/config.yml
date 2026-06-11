@@ -4,6 +4,10 @@ minio:
   endpoint: 127.0.0.1:9000
   use_ssl: false
   bucket: notes-files
+rabbitmq:
+  enabled: false
+  url: amqp://guest:guest@localhost:5672/
+  exchange: notes.events
 
 listen:
   type: port

@@ -115,6 +115,20 @@ class CategoryService:
 
         self.category_dao.delete_user_graph_link(link=link)
 
+    def ensure_workspace_member(
+        self,
+        workspace_id: str,
+        user_uuid: str,
+        workspace_name: str | None = None,
+        workspace_type: str | None = None,
+    ) -> None:
+        self.category_dao.ensure_workspace_member(
+            workspace_id=workspace_id,
+            user_uuid=user_uuid,
+            workspace_name=workspace_name,
+            workspace_type=workspace_type,
+        )
+
     def _category_exists_for_request(
         self,
         category_uuid: str | None,

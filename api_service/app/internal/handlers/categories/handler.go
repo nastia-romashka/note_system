@@ -13,7 +13,6 @@ import (
 	userclient "myproject/internal/client/user"
 	"myproject/internal/handlers/actionlog"
 	"myproject/internal/requestctx"
-	"myproject/internal/searchsync"
 	"myproject/pkg/logging"
 	"myproject/pkg/middleware/jwt"
 	workspacemw "myproject/pkg/middleware/workspace"
@@ -116,15 +115,13 @@ func (h *Handler) PartiallyUpdateCategory(w http.ResponseWriter, r *http.Request
 		return apperror.BadRequestError("can't decode")
 	}
 	categoryDTO.WorkspaceID = workspaceID
+	categoryDTO.ActorUserUUID = userUuid
 
-	err = h.CategoryService.UpdateCategory(r.Context(), categoryUuid, categoryDTO)
-	if err != nil {
+	if err = h.CategoryService.UpdateCategory(r.Context(), categoryUuid, categoryDTO); err != nil {
 		return err
 	}
-	h.syncCategoryRename(r, userUuid, categoryUuid, categoryDTO)
 
 	w.WriteHeader(http.StatusNoContent)
-
 	return nil
 }
 
@@ -171,7 +168,6 @@ func (h *Handler) DeleteCategory(w http.ResponseWriter, r *http.Request) error {
 	h.ActionRecorder.Record(r, userUuid, "category.deleted", "category", categoryDTO.Uuid, nil)
 
 	w.WriteHeader(http.StatusNoContent)
-
 	return nil
 }
 
@@ -294,133 +290,4 @@ func collectCategoryUUIDs(category categoryclient.Category) []string {
 	}
 
 	return uuids
-}
-
-func (h *Handler) syncCategoryRename(r *http.Request, userUuid, categoryUUID string, dto categoryclient.UpdateCategoryDTO) {
-	if dto.Name == "" {
-		return
-	}
-
-	workspaceID, err := h.workspaceIDFromContext(r)
-	if err != nil {
-		h.Logger.Warn("failed to resolve workspace for category search reindex", "user_uuid", userUuid, "category_uuid", categoryUUID, "error", err)
-		return
-	}
-
-	notesData, err := h.NoteService.GetNotesByCategory(r.Context(), categoryUUID, userUuid, workspaceID)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch notes for category search reindex",
-			"user_uuid", userUuid,
-			"category_uuid", categoryUUID,
-			"error", err,
-		)
-		return
-	}
-
-	var notes []noteclient.Note
-	if err = json.Unmarshal(notesData, &notes); err != nil {
-		h.Logger.Warn(
-			"failed to decode notes for category search reindex",
-			"user_uuid", userUuid,
-			"category_uuid", categoryUUID,
-			"error", err,
-		)
-		return
-	}
-	if len(notes) == 0 {
-		return
-	}
-
-	categories, err := h.fetchWorkspaceCategories(r, workspaceID)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch categories for category search reindex",
-			"user_uuid", userUuid,
-			"category_uuid", categoryUUID,
-			"error", err,
-		)
-		return
-	}
-
-	tags, err := h.fetchTagsForNotes(r, userUuid, workspaceID, notes)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch tags for category search reindex",
-			"user_uuid", userUuid,
-			"category_uuid", categoryUUID,
-			"error", err,
-		)
-		return
-	}
-
-	filesByNote, err := h.fetchFilesByNotes(r, userUuid, workspaceID, notes)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to fetch files for category search reindex",
-			"user_uuid", userUuid,
-			"category_uuid", categoryUUID,
-			"error", err,
-		)
-		return
-	}
-
-	documents, err := searchsync.BuildIndexedNotes(notes, categories, tags, filesByNote)
-	if err != nil {
-		h.Logger.Warn(
-			"failed to build indexed notes for category search reindex",
-			"user_uuid", userUuid,
-			"category_uuid", categoryUUID,
-			"error", err,
-		)
-		return
-	}
-
-	if err = h.SearchService.UpsertNotes(r.Context(), documents); err != nil {
-		h.Logger.Warn(
-			"failed to bulk sync category notes to search index",
-			"user_uuid", userUuid,
-			"category_uuid", categoryUUID,
-			"error", err,
-		)
-	}
-}
-
-func (h *Handler) fetchTagsForNotes(r *http.Request, userUuid, workspaceID string, notes []noteclient.Note) ([]noteclient.Tag, error) {
-	tagUUIDs := searchsync.CollectTagUUIDs(notes)
-	if len(tagUUIDs) == 0 {
-		return nil, nil
-	}
-
-	tagsData, err := h.NoteService.GetTags(r.Context(), tagUUIDs, userUuid, workspaceID)
-	if err != nil {
-		return nil, err
-	}
-
-	var tags []noteclient.Tag
-	if err = json.Unmarshal(tagsData, &tags); err != nil {
-		return nil, fmt.Errorf("decode tags response: %w", err)
-	}
-
-	return tags, nil
-}
-
-func (h *Handler) fetchFilesByNotes(r *http.Request, userUuid, workspaceID string, notes []noteclient.Note) (map[string][]fileclient.FileInfo, error) {
-	filesByNote := make(map[string][]fileclient.FileInfo, len(notes))
-
-	for _, note := range notes {
-		filesData, err := h.FileService.GetNoteFiles(r.Context(), note.Uuid, userUuid, workspaceID)
-		if err != nil {
-			return nil, fmt.Errorf("fetch files for note %s: %w", note.Uuid, err)
-		}
-
-		var files []fileclient.FileInfo
-		if err = json.Unmarshal(filesData, &files); err != nil {
-			return nil, fmt.Errorf("decode files response for note %s: %w", note.Uuid, err)
-		}
-
-		filesByNote[note.Uuid] = files
-	}
-
-	return filesByNote, nil
 }

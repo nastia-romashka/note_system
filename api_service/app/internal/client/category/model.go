@@ -22,11 +22,12 @@ type CreateCategoryDTO struct {
 }
 
 type UpdateCategoryDTO struct {
-	Uuid        string `json:"uuid,omitempty"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
-	Name        string `json:"name,omitempty"`
-	Color       string `json:"color,omitempty"`
-	ParentUuid  string `json:"parent_uuid,omitempty"`
+	Uuid          string `json:"uuid,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
+	ActorUserUUID string `json:"actor_user_uuid,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Color         string `json:"color,omitempty"`
+	ParentUuid    string `json:"parent_uuid,omitempty"`
 }
 
 type DeleteCategoryDTO struct {

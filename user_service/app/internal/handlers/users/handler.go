@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"user_service/internal/apperror"
+	"user_service/internal/events"
 	"user_service/pkg/logging"
 )
 
@@ -61,8 +62,9 @@ type UserService interface {
 }
 
 type Handler struct {
-	Logger      logging.Logger
-	UserService UserService
+	Logger         logging.Logger
+	UserService    UserService
+	EventPublisher events.Publisher
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {

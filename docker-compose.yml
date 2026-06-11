@@ -40,6 +40,10 @@ services:
       NOTE_SERVICE_BIND_IP: 0.0.0.0
       NOTE_SERVICE_MONGO_HOST: mongo_notes
       NOTE_SERVICE_MONGO_PORT: 27017
+      NOTE_SERVICE_RABBITMQ_ENABLED: "true"
+      NOTE_SERVICE_RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      NOTE_SERVICE_RABBITMQ_EXCHANGE: notes.events
+      NOTE_SERVICE_RABBITMQ_NOTE_UPDATED_ROUTING_KEY: note.updated
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -48,6 +52,8 @@ services:
       start_period: 10s
     depends_on:
       mongo_notes:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   user_service:
@@ -64,6 +70,9 @@ services:
       USER_SERVICE_POSTGRES_USERNAME: notes_user
       USER_SERVICE_POSTGRES_PASSWORD: notes_password
       USER_SERVICE_POSTGRES_SSL_MODE: disable
+      USER_SERVICE_RABBITMQ_ENABLED: "true"
+      USER_SERVICE_RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      USER_SERVICE_RABBITMQ_EXCHANGE: notes.events
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8083/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -72,6 +81,8 @@ services:
       start_period: 10s
     depends_on:
       postgres_users:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   file_service:
@@ -85,6 +96,9 @@ services:
     environment:
       FILE_SERVICE_BIND_IP: 0.0.0.0
       FILE_SERVICE_MINIO_ENDPOINT: minio:9000
+      FILE_SERVICE_RABBITMQ_ENABLED: "true"
+      FILE_SERVICE_RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      FILE_SERVICE_RABBITMQ_EXCHANGE: notes.events
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8085/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -93,6 +107,8 @@ services:
       start_period: 10s
     depends_on:
       minio:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   category_service:
@@ -104,6 +120,11 @@ services:
     environment:
       NEO4J_HOSTNAME: neo4j
       NEO4J_PORT: 7687
+      RABBITMQ_ENABLED: "true"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: notes.events
+      RABBITMQ_NOTE_UPDATED_QUEUE: category.note-updated
+      RABBITMQ_NOTE_UPDATED_ROUTING_KEY: note.updated
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health').read()\""]
       interval: 10s
@@ -112,6 +133,8 @@ services:
       start_period: 15s
     depends_on:
       neo4j:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   search_service:
@@ -125,6 +148,12 @@ services:
       SEARCH_SERVICE_TYPESENSE_URL: http://typesense:8108
       SEARCH_SERVICE_TYPESENSE_API_KEY: local-typesense-api-key
       SEARCH_SERVICE_TYPESENSE_COLLECTION: notes
+      SEARCH_SERVICE_RABBITMQ_ENABLED: "true"
+      SEARCH_SERVICE_RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      SEARCH_SERVICE_RABBITMQ_EXCHANGE: notes.events
+      SEARCH_SERVICE_NOTE_URL: http://note_service:8082/api
+      SEARCH_SERVICE_CATEGORY_URL: http://category_service:8081/api
+      SEARCH_SERVICE_FILE_URL: http://file_service:8085
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8086/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -133,6 +162,14 @@ services:
       start_period: 10s
     depends_on:
       typesense:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      note_service:
+        condition: service_healthy
+      category_service:
+        condition: service_healthy
+      file_service:
         condition: service_healthy
 
   web_client:
@@ -236,6 +273,18 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
 
 volumes:
   mongo_notes_data:

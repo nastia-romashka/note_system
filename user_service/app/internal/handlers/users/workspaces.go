@@ -1,11 +1,13 @@
 package users
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"user_service/internal/apperror"
+	"user_service/internal/events"
 )
 
 func (h *Handler) GetUserWorkspaces(w http.ResponseWriter, r *http.Request) error {
@@ -262,6 +264,16 @@ func (h *Handler) AcceptWorkspaceInvite(w http.ResponseWriter, r *http.Request) 
 	workspace, err := h.UserService.AcceptWorkspaceInvite(inviteUUID, dto.UserUUID)
 	if err != nil {
 		return err
+	}
+
+	if publishErr := h.EventPublisher.PublishWorkspaceInviteAccepted(context.Background(), events.WorkspaceInviteAcceptedPayload{
+		WorkspaceID:   workspace.Uuid,
+		WorkspaceName: workspace.Name,
+		WorkspaceType: workspace.Visibility,
+		UserUUID:      dto.UserUUID,
+		InviteUUID:    inviteUUID,
+	}); publishErr != nil {
+		h.Logger.Warn("failed to publish workspace.invite.accepted event", "invite_uuid", inviteUUID, "workspace_uuid", workspace.Uuid, "error", publishErr)
 	}
 
 	data, err := json.Marshal(workspace)

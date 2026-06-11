@@ -16,6 +16,8 @@ from helpers.fast import (
     uncaught_exception_handler,
     validation_exception_handler,
 )
+from messaging.domain_events import DomainEventsConsumer
+from messaging.publisher import CategoryEventsPublisher
 from resources.categories import router as categories_router
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -65,6 +67,7 @@ class AppFactory:
         app.state.config = self.config
         app.state.logger = self.logger
         app.state.container = self.container
+        app.state.category_events_publisher = CategoryEventsPublisher(self.config, self.logger)
 
         app.add_middleware(
             CORSMiddleware,
@@ -89,6 +92,25 @@ class AppFactory:
                 "debug": self.config.DEBUG,
                 "neo4j_uri": self.config.neo4j_uri,
             }
+
+        @app.on_event("startup")
+        async def start_consumers() -> None:
+            consumer = DomainEventsConsumer(
+                config=self.config,
+                logger=self.logger,
+                category_service_factory=self.container.category_service,
+            )
+            app.state.domain_events_consumer = consumer
+            consumer.start()
+
+        @app.on_event("shutdown")
+        async def stop_consumers() -> None:
+            consumer = getattr(app.state, "domain_events_consumer", None)
+            if consumer is not None:
+                consumer.stop()
+            publisher = getattr(app.state, "category_events_publisher", None)
+            if publisher is not None:
+                publisher.close()
 
         @app.get(f"{self.config.API_PREFIX}/config")
         async def get_config() -> dict[str, object]:

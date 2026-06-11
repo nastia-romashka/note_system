@@ -3,8 +3,10 @@ module user_service
 go 1.25.1
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/jackc/pgx/v5 v5.9.2
+	github.com/rabbitmq/amqp091-go v1.10.0
 	golang.org/x/crypto v0.26.0
 )
 

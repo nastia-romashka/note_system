@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"note_service/internal/config"
+	"note_service/internal/events"
 	handlers "note_service/internal/handlers/notes"
 	taghandlers "note_service/internal/handlers/tags"
 	noteservice "note_service/internal/service/notes"
@@ -26,6 +27,12 @@ func main() {
 	logger := logging.GetLogger()
 	logger.Info("note_service starting")
 	cfg := config.GetConfig()
+	publisher := events.NewPublisher(cfg, logger)
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			logger.Warn("failed to close note event publisher", "error", err)
+		}
+	}()
 
 	storage, err := db.NewStorage(cfg)
 	if err != nil {
@@ -42,7 +49,7 @@ func main() {
 
 	noteHandler := handlers.Handler{
 		Logger:      logger,
-		NoteService: noteservice.NewService(storage),
+		NoteService: noteservice.NewService(storage, publisher, logger),
 	}
 	noteHandler.Register(mux)
 

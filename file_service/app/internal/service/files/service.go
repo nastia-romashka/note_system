@@ -1,6 +1,7 @@
 package files
 
 import (
+	"context"
 	"fmt"
 	"mime"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"file_service/internal/apperror"
+	"file_service/internal/events"
 	domainfile "file_service/internal/file"
 	"file_service/pkg/logging"
 )
@@ -17,13 +19,15 @@ type service struct {
 	storage          domainfile.Storage
 	logger           logging.Logger
 	maxFileSizeBytes int64
+	publisher        events.Publisher
 }
 
-func NewService(storage domainfile.Storage, logger logging.Logger, maxFileSizeBytes int64) *service {
+func NewService(storage domainfile.Storage, logger logging.Logger, maxFileSizeBytes int64, publisher events.Publisher) *service {
 	return &service{
 		storage:          storage,
 		logger:           logger,
 		maxFileSizeBytes: maxFileSizeBytes,
+		publisher:        publisher,
 	}
 }
 
@@ -136,7 +140,7 @@ func (s *service) Create(file domainfile.UploadFile) (created domainfile.FileInf
 	}
 
 	s.logger.Info("file uploaded", "note_uuid", noteUUID, "file_id", fileID, "file_name", fileName, "size", file.Size)
-	return domainfile.FileInfo{
+	created = domainfile.FileInfo{
 		ID:          fileID,
 		Name:        fileName,
 		UserUUID:    userUUID,
@@ -144,7 +148,11 @@ func (s *service) Create(file domainfile.UploadFile) (created domainfile.FileInf
 		NoteUUID:    noteUUID,
 		Size:        file.Size,
 		ContentType: contentType,
-	}, nil
+	}
+	if publishErr := s.publisher.PublishFileUploaded(context.Background(), created); publishErr != nil {
+		s.logger.Warn("failed to publish file.uploaded event", "note_uuid", noteUUID, "file_id", fileID, "error", publishErr)
+	}
+	return created, nil
 }
 
 func (s *service) Delete(noteUUID, fileID, userUUID, workspaceID string) (err error) {
@@ -170,6 +178,14 @@ func (s *service) Delete(noteUUID, fileID, userUUID, workspaceID string) (err er
 	}
 
 	s.logger.Info("file deleted", "note_uuid", noteUUID, "file_id", fileID)
+	if publishErr := s.publisher.PublishFileDeleted(context.Background(), events.FileDeletedPayload{
+		FileID:      fileID,
+		UserUUID:    userUUID,
+		WorkspaceID: workspaceID,
+		NoteUUID:    noteUUID,
+	}); publishErr != nil {
+		s.logger.Warn("failed to publish file.deleted event", "note_uuid", noteUUID, "file_id", fileID, "error", publishErr)
+	}
 	return nil
 }
 

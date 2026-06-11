@@ -23,6 +23,11 @@ class Config:
         "NEO4J_LOGIN",
         "NEO4J_PASSWORD",
         "NEO4J_DATABASE",
+        "RABBITMQ_ENABLED",
+        "RABBITMQ_URL",
+        "RABBITMQ_EXCHANGE",
+        "RABBITMQ_NOTE_UPDATED_QUEUE",
+        "RABBITMQ_NOTE_UPDATED_ROUTING_KEY",
     ]
 
     def __init__(self, yaml_file: str) -> None:
@@ -57,6 +62,11 @@ class Config:
         self.NEO4J_LOGIN = "neo4j"
         self.NEO4J_PASSWORD = "password"
         self.NEO4J_DATABASE = "neo4j"
+        self.RABBITMQ_ENABLED = False
+        self.RABBITMQ_URL = "amqp://guest:guest@localhost:5672/"
+        self.RABBITMQ_EXCHANGE = "notes.events"
+        self.RABBITMQ_NOTE_UPDATED_QUEUE = "category.note-updated"
+        self.RABBITMQ_NOTE_UPDATED_ROUTING_KEY = "note.updated"
 
     def _read(self) -> None:
         if not os.path.exists(self._path):
@@ -86,6 +96,11 @@ class Config:
             "NEO4J_LOGIN": str,
             "NEO4J_PASSWORD": str,
             "NEO4J_DATABASE": str,
+            "RABBITMQ_ENABLED": self._parse_bool,
+            "RABBITMQ_URL": str,
+            "RABBITMQ_EXCHANGE": str,
+            "RABBITMQ_NOTE_UPDATED_QUEUE": str,
+            "RABBITMQ_NOTE_UPDATED_ROUTING_KEY": str,
         }
 
         for field_name, parser in env_parsers.items():

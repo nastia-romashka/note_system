@@ -121,7 +121,6 @@ func main() {
 		CategoryService:  categoryService,
 		FileService:      fileService,
 		NoteService:      noteService,
-		SearchService:    searchService,
 		WorkspaceService: userService,
 		ActionRecorder:   actionRecorder,
 	}
@@ -149,10 +148,8 @@ func main() {
 
 	filesHandler := files.Handler{
 		Logger:           logger,
-		CategoryService:  categoryService,
 		NoteService:      noteService,
 		FileService:      fileService,
-		SearchService:    searchService,
 		WorkspaceService: userService,
 		ActionRecorder:   actionRecorder,
 	}

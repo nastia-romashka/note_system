@@ -14,6 +14,7 @@ class CreateCategoryDTO(Base):
 class UpdateCategoryDTO(Base):
     uuid: str | None = None
     workspace_id: str
+    actor_user_uuid: str | None = None
     name: str | None = None
     color: str | None = None
     parent_uuid: str | None = None
