@@ -98,22 +98,27 @@ func (h *Handler) GetSummary(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	categoryStats, err := h.CategoryService.GetStats(r.Context(), userUUID)
+	personalWorkspace, err := h.UserService.GetPersonalWorkspace(r.Context(), userUUID)
 	if err != nil {
 		return err
 	}
 
-	noteStats, err := h.NoteService.GetStats(r.Context(), userUUID)
+	categoryStats, err := h.CategoryService.GetStats(r.Context(), personalWorkspace.Uuid)
 	if err != nil {
 		return err
 	}
 
-	fileStats, err := h.FileService.GetStats(r.Context(), userUUID)
+	noteStats, err := h.NoteService.GetStats(r.Context(), userUUID, personalWorkspace.Uuid)
 	if err != nil {
 		return err
 	}
 
-	upcomingEvents, err := h.fetchUpcomingEvents(r, userUUID)
+	fileStats, err := h.FileService.GetStats(r.Context(), userUUID, personalWorkspace.Uuid)
+	if err != nil {
+		return err
+	}
+
+	upcomingEvents, err := h.fetchUpcomingEvents(r, userUUID, personalWorkspace.Uuid)
 	if err != nil {
 		return err
 	}
@@ -153,11 +158,11 @@ func (h *Handler) GetSummary(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func (h *Handler) fetchUpcomingEvents(r *http.Request, userUUID string) ([]noteclient.Note, error) {
+func (h *Handler) fetchUpcomingEvents(r *http.Request, userUUID, workspaceID string) ([]noteclient.Note, error) {
 	now := time.Now().Unix()
 	const upcomingWindow = int64(30 * 24 * 60 * 60)
 
-	notesData, err := h.NoteService.GetCalendarNotes(r.Context(), now, now+upcomingWindow, userUUID)
+	notesData, err := h.NoteService.GetCalendarNotes(r.Context(), now, now+upcomingWindow, userUUID, workspaceID)
 	if err != nil {
 		return nil, err
 	}

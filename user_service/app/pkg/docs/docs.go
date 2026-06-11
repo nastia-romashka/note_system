@@ -36,8 +36,8 @@ func openAPISpec() map[string]any {
 		"openapi": "3.0.3",
 		"info": map[string]any{
 			"title":       "User Service API",
-			"version":     "1.1.0",
-			"description": "Internal API for users, profiles, action history, authentication, and refresh sessions.",
+			"version":     "1.2.0",
+			"description": "Internal API for users, profiles, action history, authentication, refresh sessions, and workspaces.",
 		},
 		"tags": []map[string]any{
 			{"name": "system", "description": "Service health endpoints."},
@@ -46,6 +46,9 @@ func openAPISpec() map[string]any {
 			{"name": "actions", "description": "User activity audit endpoints."},
 			{"name": "auth", "description": "Username and password authentication."},
 			{"name": "sessions", "description": "Refresh-session lifecycle endpoints."},
+			{"name": "workspaces", "description": "Workspace management and membership endpoints."},
+			{"name": "invites", "description": "Workspace invitation endpoints."},
+			{"name": "internal", "description": "Internal endpoints used by api_service for workspace resolution and access checks."},
 		},
 		"servers": []map[string]string{
 			{"url": "/"},
@@ -133,6 +136,30 @@ func openAPISpec() map[string]any {
 					},
 				},
 			},
+			"/api/users/{uuid}/workspaces": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "List user workspaces",
+					"operationId": "getUserWorkspaces",
+					"parameters":  []map[string]any{pathParam("uuid", "User UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("User workspaces", arraySchemaRef("Workspace")),
+						"400": errorResponse(),
+					},
+				},
+			},
+			"/api/users/{uuid}/workspace-invites": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"invites"},
+					"summary":     "List workspace invites for user",
+					"operationId": "getUserWorkspaceInvites",
+					"parameters":  []map[string]any{pathParam("uuid", "User UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace invites", arraySchemaRef("WorkspaceInvite")),
+						"400": errorResponse(),
+					},
+				},
+			},
 			"/api/user-actions/{uuid}": map[string]any{
 				"post": map[string]any{
 					"tags":        []string{"actions"},
@@ -198,6 +225,153 @@ func openAPISpec() map[string]any {
 					},
 				},
 			},
+			"/api/workspaces": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Create shared workspace",
+					"operationId": "createWorkspace",
+					"requestBody": jsonBody(schemaRef("CreateWorkspaceRequest"), true),
+					"responses": map[string]any{
+						"201": locationResponse("Workspace created"),
+						"400": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Get workspace by UUID",
+					"operationId": "getWorkspace",
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace", schemaRef("Workspace")),
+						"400": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}/members": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "List workspace members",
+					"operationId": "getWorkspaceMembers",
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace members", arraySchemaRef("WorkspaceMember")),
+						"400": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}/members/{member_uuid}": map[string]any{
+				"patch": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Update workspace member role or status",
+					"operationId": "updateWorkspaceMember",
+					"parameters": []map[string]any{
+						pathParam("uuid", "Workspace UUID"),
+						pathParam("member_uuid", "Member user UUID"),
+					},
+					"requestBody": jsonBody(schemaRef("UpdateWorkspaceMemberRequest"), true),
+					"responses": map[string]any{
+						"200": jsonResponse("Updated workspace member", schemaRef("WorkspaceMember")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}/invites": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"invites"},
+					"summary":     "List workspace invites",
+					"operationId": "getWorkspaceInvites",
+					"parameters": []map[string]any{
+						pathParam("uuid", "Workspace UUID"),
+						queryParam("user_id", "string", "Actor user UUID", true),
+					},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace invites", arraySchemaRef("WorkspaceInvite")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+				"post": map[string]any{
+					"tags":        []string{"invites"},
+					"summary":     "Create workspace invite",
+					"operationId": "createWorkspaceInvite",
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"requestBody": jsonBody(schemaRef("CreateWorkspaceInviteRequest"), true),
+					"responses": map[string]any{
+						"201": jsonResponse("Workspace invite created", schemaRef("WorkspaceInvite")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/invites/{uuid}/accept": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"invites"},
+					"summary":     "Accept workspace invite",
+					"operationId": "acceptWorkspaceInvite",
+					"parameters":  []map[string]any{pathParam("uuid", "Invite UUID")},
+					"requestBody": jsonBody(schemaRef("ResolveWorkspaceInviteRequest"), true),
+					"responses": map[string]any{
+						"200": jsonResponse("Accepted workspace", schemaRef("Workspace")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/invites/{uuid}/decline": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"invites"},
+					"summary":     "Decline workspace invite",
+					"operationId": "declineWorkspaceInvite",
+					"parameters":  []map[string]any{pathParam("uuid", "Invite UUID")},
+					"requestBody": jsonBody(schemaRef("ResolveWorkspaceInviteRequest"), true),
+					"responses": map[string]any{
+						"204": noContentResponse("Workspace invite declined"),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/internal/users/{uuid}/personal-workspace": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"internal"},
+					"summary":     "Resolve personal workspace for user",
+					"operationId": "getPersonalWorkspace",
+					"parameters":  []map[string]any{pathParam("uuid", "User UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("Personal workspace", schemaRef("Workspace")),
+						"400": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/internal/workspaces/{uuid}/access": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"internal"},
+					"summary":     "Check user access to workspace",
+					"operationId": "getWorkspaceAccess",
+					"parameters": []map[string]any{
+						pathParam("uuid", "Workspace UUID"),
+						queryParam("user_id", "string", "User UUID", true),
+					},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace access", schemaRef("WorkspaceAccess")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"schemas": map[string]any{
@@ -252,6 +426,79 @@ func openAPISpec() map[string]any {
 						"created_at":   map[string]any{"type": "integer", "format": "int64", "example": 1760000200},
 						"expires_at":   map[string]any{"type": "integer", "format": "int64", "example": 1760605000},
 						"last_used_at": map[string]any{"type": "integer", "format": "int64", "nullable": true},
+					},
+				},
+				"Workspace": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"uuid":            map[string]any{"type": "string", "format": "uuid"},
+						"name":            map[string]any{"type": "string", "example": "Команда продукта"},
+						"owner_user_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"visibility": map[string]any{
+							"type": "string",
+							"enum": []string{"private", "invite_only"},
+						},
+						"is_personal": map[string]any{"type": "boolean", "example": false},
+						"created_at":  map[string]any{"type": "integer", "format": "int64", "example": 1760001000},
+						"updated_at":  map[string]any{"type": "integer", "format": "int64", "example": 1760001000},
+					},
+				},
+				"WorkspaceMember": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workspace_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"user_uuid":      map[string]any{"type": "string", "format": "uuid"},
+						"username":       map[string]any{"type": "string", "example": "tester01"},
+						"email":          map[string]any{"type": "string", "format": "email", "example": "tester01@example.com"},
+						"role": map[string]any{
+							"type": "string",
+							"enum": []string{"owner", "editor", "viewer"},
+						},
+						"status": map[string]any{
+							"type": "string",
+							"enum": []string{"active", "pending", "removed"},
+						},
+						"joined_at":  map[string]any{"type": "integer", "format": "int64", "nullable": true},
+						"invited_by": map[string]any{"type": "string", "format": "uuid", "nullable": true},
+					},
+				},
+				"WorkspaceInvite": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"uuid":           map[string]any{"type": "string", "format": "uuid"},
+						"workspace_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"workspace_name": map[string]any{"type": "string", "example": "Команда продукта"},
+						"email":          map[string]any{"type": "string", "format": "email", "example": "invitee@example.com"},
+						"role": map[string]any{
+							"type": "string",
+							"enum": []string{"viewer", "editor"},
+						},
+						"invited_by_user_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"invited_by_username":  map[string]any{"type": "string", "example": "owner01"},
+						"expires_at":           map[string]any{"type": "integer", "format": "int64", "example": 1760605000},
+						"accepted_at":          map[string]any{"type": "integer", "format": "int64", "nullable": true},
+						"declined_at":          map[string]any{"type": "integer", "format": "int64", "nullable": true},
+						"created_at":           map[string]any{"type": "integer", "format": "int64", "example": 1760001000},
+						"status": map[string]any{
+							"type": "string",
+							"enum": []string{"pending", "accepted", "declined", "expired"},
+						},
+					},
+				},
+				"WorkspaceAccess": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workspace": schemaRef("Workspace"),
+						"user_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"role": map[string]any{
+							"type": "string",
+							"enum": []string{"owner", "editor", "viewer"},
+						},
+						"status": map[string]any{
+							"type": "string",
+							"enum": []string{"active"},
+						},
+						"allowed": map[string]any{"type": "boolean", "example": true},
 					},
 				},
 				"CreateUserRequest": map[string]any{
@@ -336,6 +583,54 @@ func openAPISpec() map[string]any {
 					"required": []string{"refresh_token_hash"},
 					"properties": map[string]any{
 						"refresh_token_hash": map[string]any{"type": "string", "example": "rt_hash_002"},
+					},
+				},
+				"CreateWorkspaceRequest": map[string]any{
+					"type":     "object",
+					"required": []string{"owner_user_uuid", "name"},
+					"properties": map[string]any{
+						"owner_user_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"name":            map[string]any{"type": "string", "example": "Команда продукта"},
+						"visibility": map[string]any{
+							"type":        "string",
+							"enum":        []string{"invite_only"},
+							"description": "Shared workspaces are created as invite_only. Personal workspaces are created automatically during registration.",
+						},
+					},
+				},
+				"CreateWorkspaceInviteRequest": map[string]any{
+					"type":     "object",
+					"required": []string{"invited_by_user_uuid", "email"},
+					"properties": map[string]any{
+						"invited_by_user_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"email":                map[string]any{"type": "string", "format": "email", "example": "invitee@example.com"},
+						"role": map[string]any{
+							"type": "string",
+							"enum": []string{"viewer", "editor"},
+						},
+						"expires_at": map[string]any{"type": "integer", "format": "int64", "example": 1760605000},
+					},
+				},
+				"UpdateWorkspaceMemberRequest": map[string]any{
+					"type":     "object",
+					"required": []string{"actor_user_uuid"},
+					"properties": map[string]any{
+						"actor_user_uuid": map[string]any{"type": "string", "format": "uuid"},
+						"role": map[string]any{
+							"type": "string",
+							"enum": []string{"viewer", "editor"},
+						},
+						"status": map[string]any{
+							"type": "string",
+							"enum": []string{"active", "removed"},
+						},
+					},
+				},
+				"ResolveWorkspaceInviteRequest": map[string]any{
+					"type":     "object",
+					"required": []string{"user_uuid"},
+					"properties": map[string]any{
+						"user_uuid": map[string]any{"type": "string", "format": "uuid"},
 					},
 				},
 			},

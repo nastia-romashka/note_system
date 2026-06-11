@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { deleteFile, downloadFile, fetchFiles, uploadFile } from "../api/filesApi";
 import { PREVIEW_DATA } from "../preview/previewData";
 
-export function useFilesData({ token, selectedNoteId, uiPreview, setMessage, setLoading }) {
+export function useFilesData({ token, workspaceId, selectedNoteId, uiPreview, setMessage, setLoading }) {
   const [files, setFiles] = useState(uiPreview ? PREVIEW_DATA.files["note-1"] : []);
   const [fileDraft, setFileDraft] = useState(null);
   const fileInputRef = useRef(null);
@@ -23,7 +23,7 @@ export function useFilesData({ token, selectedNoteId, uiPreview, setMessage, set
 
     void (async () => {
       try {
-        const fileList = await fetchFiles(token, selectedNoteId);
+        const fileList = await fetchFiles(token, selectedNoteId, workspaceId);
         if (!ignore) {
           setFiles(fileList);
         }
@@ -37,7 +37,7 @@ export function useFilesData({ token, selectedNoteId, uiPreview, setMessage, set
     return () => {
       ignore = true;
     };
-  }, [token, selectedNoteId]);
+  }, [token, workspaceId, selectedNoteId]);
 
   async function handleUploadFile(event) {
     event.preventDefault();
@@ -53,13 +53,13 @@ export function useFilesData({ token, selectedNoteId, uiPreview, setMessage, set
 
     try {
       setLoading(true);
-      await uploadFile(token, selectedNoteId, fileDraft);
+      await uploadFile(token, selectedNoteId, fileDraft, workspaceId);
       setFileDraft(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
       setMessage({ type: "success", text: "Файл прикреплен." });
-      setFiles(await fetchFiles(token, selectedNoteId));
+      setFiles(await fetchFiles(token, selectedNoteId, workspaceId));
     } catch (error) {
       handleError(error);
     } finally {
@@ -79,9 +79,9 @@ export function useFilesData({ token, selectedNoteId, uiPreview, setMessage, set
 
     try {
       setLoading(true);
-      await deleteFile(token, selectedNoteId, fileId);
+      await deleteFile(token, selectedNoteId, fileId, workspaceId);
       setMessage({ type: "success", text: "Файл удален." });
-      setFiles(await fetchFiles(token, selectedNoteId));
+      setFiles(await fetchFiles(token, selectedNoteId, workspaceId));
     } catch (error) {
       handleError(error);
     } finally {
@@ -100,7 +100,7 @@ export function useFilesData({ token, selectedNoteId, uiPreview, setMessage, set
     }
 
     try {
-      const blob = await downloadFile(token, selectedNoteId, fileId);
+      const blob = await downloadFile(token, selectedNoteId, fileId, workspaceId);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

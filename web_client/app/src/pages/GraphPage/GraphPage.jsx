@@ -12,6 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import WorkspaceContextMenu from "../../components/WorkspaceContextMenu";
 import { buildCategoryOptions, filterGraph } from "./graphFilters";
 
 const NODE_WIDTH = 220;
@@ -32,6 +33,8 @@ const nodeTypes = {
 };
 
 export default function GraphPage({
+  currentWorkspace,
+  workspaces,
   graph,
   loading,
   onCreateGraphLink,
@@ -40,8 +43,14 @@ export default function GraphPage({
   onOpenCalendar,
   onOpenGraphNode,
   onOpenProfile,
+  onSelectPersonalWorkspace,
+  onSelectWorkspace,
+  onCreateWorkspace,
 }) {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const isWorkspaceMode = Boolean(currentWorkspace);
+  const pageTitle = isWorkspaceMode ? `${currentWorkspace.name}: Граф` : "Граф";
+  const contextButtonLabel = isWorkspaceMode ? "Настройки пространства" : "Личный кабинет";
   const filteredGraph = useMemo(() => filterGraph(graph, filters), [graph, filters]);
   const preparedGraph = useMemo(() => toFlowGraph(filteredGraph), [filteredGraph]);
   const categoryOptions = useMemo(() => buildCategoryOptions(graph), [graph]);
@@ -188,12 +197,22 @@ export default function GraphPage({
 
   return (
     <main className="graph-page">
-      <header className="graph-header">
-        <div>
-          <span className="eyebrow">Связанная база знаний</span>
-          <h1>Граф</h1>
+      <header className="profile-header page-header">
+        <div className="page-header-copy">
+          <div className="page-header-leading">
+            <WorkspaceContextMenu
+              currentWorkspace={currentWorkspace}
+              workspaces={workspaces}
+              onSelectPersonalWorkspace={onSelectPersonalWorkspace}
+              onSelectWorkspace={onSelectWorkspace}
+              onCreateWorkspace={onCreateWorkspace}
+            />
+            <span className="eyebrow">{isWorkspaceMode ? "Общий режим" : "Личный режим"}</span>
+          </div>
+          <h1>{pageTitle}</h1>
+          <p>Связанная база знаний, категории и заметки в одном визуальном слое.</p>
         </div>
-        <div className="graph-actions">
+        <div className="profile-actions page-header-actions">
           <button className="secondary-button" type="button" onClick={onBackToNotes}>
             Заметки
           </button>
@@ -201,7 +220,7 @@ export default function GraphPage({
             Календарь
           </button>
           <button className="secondary-button" type="button" onClick={onOpenProfile}>
-            Личный кабинет
+            {contextButtonLabel}
           </button>
         </div>
       </header>

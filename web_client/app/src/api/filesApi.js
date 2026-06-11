@@ -1,10 +1,10 @@
 import { authHeaders, request, requestRaw } from "./http";
 
-export function fetchFiles(token, noteId) {
-  return request(`/api/notes/${noteId}/files`, { headers: authHeaders(token) });
+export function fetchFiles(token, noteId, workspaceId = "") {
+  return request(`/api/notes/${noteId}/files`, { headers: authHeaders(token, "application/json", workspaceId) });
 }
 
-export function uploadFile(token, noteId, file) {
+export function uploadFile(token, noteId, file, workspaceId = "") {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -12,21 +12,22 @@ export function uploadFile(token, noteId, file) {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
+      ...(workspaceId ? { "X-Workspace-Id": workspaceId } : {}),
     },
     body: formData,
   });
 }
 
-export function deleteFile(token, noteId, fileId) {
+export function deleteFile(token, noteId, fileId, workspaceId = "") {
   return request(`/api/notes/${noteId}/files/${fileId}`, {
     method: "DELETE",
-    headers: authHeaders(token),
+    headers: authHeaders(token, "application/json", workspaceId),
   });
 }
 
-export async function downloadFile(token, noteId, fileId) {
+export async function downloadFile(token, noteId, fileId, workspaceId = "") {
   const response = await requestRaw(`/api/notes/${noteId}/files/${fileId}`, {
-    headers: authHeaders(token, "*/*"),
+    headers: authHeaders(token, "*/*", workspaceId),
   });
 
   if (!response.ok) {

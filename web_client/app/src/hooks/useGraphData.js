@@ -7,13 +7,13 @@ const EMPTY_GRAPH = {
   edges: [],
 };
 
-export function useGraphData({ token, enabled, setMessage }) {
+export function useGraphData({ token, workspaceId, enabled, setMessage }) {
   const [graph, setGraph] = useState(EMPTY_GRAPH);
   const [graphLoading, setGraphLoading] = useState(false);
 
   useEffect(() => {
     setGraph(EMPTY_GRAPH);
-  }, [token]);
+  }, [token, workspaceId]);
 
   useEffect(() => {
     if (!enabled || !token) {
@@ -21,7 +21,7 @@ export function useGraphData({ token, enabled, setMessage }) {
     }
 
     void loadGraph();
-  }, [enabled, token]);
+  }, [enabled, token, workspaceId]);
 
   async function loadGraph() {
     if (!token) {
@@ -30,7 +30,7 @@ export function useGraphData({ token, enabled, setMessage }) {
 
     try {
       setGraphLoading(true);
-      const nextGraph = await fetchGraph(token);
+      const nextGraph = await fetchGraph(token, workspaceId);
       setGraph({
         nodes: Array.isArray(nextGraph?.nodes) ? nextGraph.nodes : [],
         edges: Array.isArray(nextGraph?.edges) ? nextGraph.edges : [],
@@ -55,7 +55,7 @@ export function useGraphData({ token, enabled, setMessage }) {
       await createGraphLink(token, {
         source_id: sourceId,
         target_id: targetId,
-      });
+      }, workspaceId);
       await loadGraph();
       setMessage({
         type: "success",
@@ -81,7 +81,7 @@ export function useGraphData({ token, enabled, setMessage }) {
       await deleteGraphLink(token, {
         source_id: sourceId,
         target_id: targetId,
-      });
+      }, workspaceId);
       await loadGraph();
       setMessage({
         type: "success",

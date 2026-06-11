@@ -19,6 +19,8 @@ type client struct {
 	Resource string
 }
 
+const requestTimeout = 30 * time.Second
+
 func NewService(baseURL string, resource string, logger logging.Logger) CategoryService {
 	return &client{
 		Resource: resource,
@@ -33,27 +35,27 @@ func NewService(baseURL string, resource string, logger logging.Logger) Category
 }
 
 type CategoryService interface {
-	GetUserCategories(ctx context.Context, userUuid string) ([]byte, error)
-	GetStats(ctx context.Context, userUuid string) (CategoryStats, error)
-	GetGraph(ctx context.Context, userUuid string) (GraphData, error)
+	GetWorkspaceCategories(ctx context.Context, workspaceID string) ([]byte, error)
+	GetStats(ctx context.Context, workspaceID string) (CategoryStats, error)
+	GetGraph(ctx context.Context, workspaceID string) (GraphData, error)
 	CreateCategory(ctx context.Context, dto CreateCategoryDTO) (string, error)
 	UpdateCategory(ctx context.Context, uuid string, dto UpdateCategoryDTO) error
 	DeleteCategory(ctx context.Context, dto DeleteCategoryDTO) error
 	CreateNoteNode(ctx context.Context, dto CreateGraphNoteDTO) error
 	UpdateNoteNode(ctx context.Context, noteUuid string, dto UpdateGraphNoteDTO) error
-	DeleteNoteNode(ctx context.Context, noteUuid, userUuid string) error
+	DeleteNoteNode(ctx context.Context, noteUuid, workspaceID string) error
 	CreateUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error
 	DeleteUserGraphLink(ctx context.Context, dto UserGraphLinkDTO) error
 }
 
-func (c *client) GetUserCategories(ctx context.Context, userUuid string) ([]byte, error) {
+func (c *client) GetWorkspaceCategories(ctx context.Context, workspaceID string) ([]byte, error) {
 	var categories []byte
 
-	c.base.Logger.Debug("add user_uuid to filter options")
+	c.base.Logger.Debug("add workspace_id to filter options")
 	filters := []rest.FilterOptions{
 		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
+			Field:  "workspace_id",
+			Values: []string{workspaceID},
 		},
 	}
 
@@ -71,7 +73,7 @@ func (c *client) GetUserCategories(ctx context.Context, userUuid string) ([]byte
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -96,11 +98,11 @@ func (c *client) GetUserCategories(ctx context.Context, userUuid string) ([]byte
 	)
 }
 
-func (c *client) GetStats(ctx context.Context, userUuid string) (stats CategoryStats, err error) {
+func (c *client) GetStats(ctx context.Context, workspaceID string) (stats CategoryStats, err error) {
 	uri, err := c.base.BuildURL("stats", []rest.FilterOptions{
 		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
+			Field:  "workspace_id",
+			Values: []string{workspaceID},
 		},
 	})
 	if err != nil {
@@ -112,7 +114,7 @@ func (c *client) GetStats(ctx context.Context, userUuid string) (stats CategoryS
 		return stats, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -140,11 +142,11 @@ func (c *client) GetStats(ctx context.Context, userUuid string) (stats CategoryS
 	)
 }
 
-func (c *client) GetGraph(ctx context.Context, userUuid string) (graph GraphData, err error) {
+func (c *client) GetGraph(ctx context.Context, workspaceID string) (graph GraphData, err error) {
 	uri, err := c.base.BuildURL("graph", []rest.FilterOptions{
 		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
+			Field:  "workspace_id",
+			Values: []string{workspaceID},
 		},
 	})
 	if err != nil {
@@ -156,7 +158,7 @@ func (c *client) GetGraph(ctx context.Context, userUuid string) (graph GraphData
 		return graph, fmt.Errorf("failed to create new request due to error: %w", err)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 
@@ -206,7 +208,7 @@ func (c *client) CreateCategory(ctx context.Context, dto CreateCategoryDTO) (str
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -255,7 +257,7 @@ func (c *client) UpdateCategory(ctx context.Context, uuid string, dto UpdateCate
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -295,7 +297,7 @@ func (c *client) DeleteCategory(ctx context.Context, dto DeleteCategoryDTO) erro
 	}
 
 	c.base.Logger.Debug("send request")
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 	response, err := c.base.SendRequest(req)
@@ -323,9 +325,9 @@ func (c *client) UpdateNoteNode(ctx context.Context, noteUuid string, dto Update
 	return c.sendGraphJSON(ctx, http.MethodPatch, fmt.Sprintf("graph/notes/%s", noteUuid), dto)
 }
 
-func (c *client) DeleteNoteNode(ctx context.Context, noteUuid, userUuid string) error {
+func (c *client) DeleteNoteNode(ctx context.Context, noteUuid, workspaceID string) error {
 	return c.sendGraphJSON(ctx, http.MethodDelete, fmt.Sprintf("graph/notes/%s", noteUuid), DeleteGraphNoteDTO{
-		UserUuid: userUuid,
+		WorkspaceID: workspaceID,
 	})
 }
 

@@ -1,8 +1,8 @@
 import { API_BASE_URL, authHeaders, readSafeJson, request } from "./http";
 
-export function fetchNotes(token, categoryId) {
+export function fetchNotes(token, categoryId, workspaceId = "") {
   return request(`/api/notes?category_uuid=${encodeURIComponent(categoryId)}`, {
-    headers: authHeaders(token),
+    headers: authHeaders(token, "application/json", workspaceId),
   }).catch((error) => {
     if (String(error.message).toLowerCase().includes("not found")) {
       return [];
@@ -11,7 +11,7 @@ export function fetchNotes(token, categoryId) {
   });
 }
 
-export function fetchSearchNotes(token, { query, categoryId }) {
+export function fetchSearchNotes(token, { query, categoryId, workspaceId = "" }) {
   const params = new URLSearchParams();
   if (query) {
     params.set("q", query);
@@ -21,25 +21,28 @@ export function fetchSearchNotes(token, { query, categoryId }) {
   }
 
   return request(`/api/search/notes?${params.toString()}`, {
-    headers: authHeaders(token),
+    headers: authHeaders(token, "application/json", workspaceId),
   });
 }
 
-export function fetchCalendarNotes(token, { from, to }) {
+export function fetchCalendarNotes(token, { from, to, workspaceId = "" }) {
   const params = new URLSearchParams({
     from: String(from),
     to: String(to),
   });
 
   return request(`/api/calendar?${params.toString()}`, {
-    headers: authHeaders(token),
+    headers: authHeaders(token, "application/json", workspaceId),
   });
 }
 
-export function createNote(token, payload) {
+export function createNote(token, payload, workspaceId = "") {
   return fetch(`${API_BASE_URL}/api/notes`, {
     method: "POST",
-    headers: authHeaders(token),
+    headers: {
+      ...authHeaders(token, "application/json", workspaceId),
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   }).then(async (response) => {
     if (!response.ok) {
@@ -57,25 +60,31 @@ export function createNote(token, payload) {
   });
 }
 
-export function updateNote(token, noteId, payload) {
+export function updateNote(token, noteId, payload, workspaceId = "") {
   return request(`/api/notes/${noteId}`, {
     method: "PATCH",
-    headers: authHeaders(token),
+    headers: {
+      ...authHeaders(token, "application/json", workspaceId),
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 }
 
-export function deleteNote(token, noteId) {
+export function deleteNote(token, noteId, workspaceId = "") {
   return request(`/api/notes/${noteId}`, {
     method: "DELETE",
-    headers: authHeaders(token),
+    headers: authHeaders(token, "application/json", workspaceId),
   });
 }
 
-export function duplicateNote(token, noteId, payload) {
+export function duplicateNote(token, noteId, payload, workspaceId = "") {
   return request(`/api/notes/${noteId}/duplicate`, {
     method: "POST",
-    headers: authHeaders(token),
+    headers: {
+      ...authHeaders(token, "application/json", workspaceId),
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
   });
 }

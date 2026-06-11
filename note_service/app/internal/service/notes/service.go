@@ -19,12 +19,18 @@ func NewService(storage storage.Storage) *service {
 	return &service{storage: storage}
 }
 
-func (s *service) GetOne(noteUUID, userUUID string) (note handlermodel.Note, err error) {
+func (s *service) GetOne(noteUUID, userUUID, workspaceID string) (note handlermodel.Note, err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return handlermodel.Note{}, apperror.BadRequestError("user_uuid is required")
 	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return handlermodel.Note{}, apperror.BadRequestError("workspace_id is required")
+	}
 
-	note, err = s.storage.FindOne(noteUUID, userUUID)
+	note, err = s.storage.FindOne(noteUUID, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return handlermodel.Note{}, err
@@ -35,12 +41,18 @@ func (s *service) GetOne(noteUUID, userUUID string) (note handlermodel.Note, err
 	return note, nil
 }
 
-func (s *service) GetByCategoryUUID(categoryUUID, userUUID string) (notes []handlermodel.Note, err error) {
+func (s *service) GetByCategoryUUID(categoryUUID, userUUID, workspaceID string) (notes []handlermodel.Note, err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return nil, apperror.BadRequestError("user_uuid is required")
 	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, apperror.BadRequestError("workspace_id is required")
+	}
 
-	notes, err = s.storage.FindByCategoryUUID(categoryUUID, userUUID)
+	notes, err = s.storage.FindByCategoryUUID(categoryUUID, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return nil, err
@@ -51,9 +63,12 @@ func (s *service) GetByCategoryUUID(categoryUUID, userUUID string) (notes []hand
 	return notes, nil
 }
 
-func (s *service) GetByEventRange(from, to int64, userUUID string) (notes []handlermodel.Note, err error) {
+func (s *service) GetByEventRange(from, to int64, userUUID, workspaceID string) (notes []handlermodel.Note, err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return nil, apperror.BadRequestError("user_uuid is required")
+	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, apperror.BadRequestError("workspace_id is required")
 	}
 	if from <= 0 || to <= 0 {
 		return nil, apperror.BadRequestError("from and to are required")
@@ -62,7 +77,10 @@ func (s *service) GetByEventRange(from, to int64, userUUID string) (notes []hand
 		return nil, apperror.BadRequestError("from must be less than or equal to to")
 	}
 
-	notes, err = s.storage.FindByEventRange(from, to, userUUID)
+	notes, err = s.storage.FindByEventRange(from, to, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get notes by event range: %w", err)
 	}
@@ -70,12 +88,18 @@ func (s *service) GetByEventRange(from, to int64, userUUID string) (notes []hand
 	return notes, nil
 }
 
-func (s *service) GetStats(userUUID string) (stats handlermodel.NoteStats, err error) {
+func (s *service) GetStats(userUUID, workspaceID string) (stats handlermodel.NoteStats, err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return handlermodel.NoteStats{}, apperror.BadRequestError("user_uuid is required")
 	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return handlermodel.NoteStats{}, apperror.BadRequestError("workspace_id is required")
+	}
 
-	stats, err = s.storage.CountStats(userUUID)
+	stats, err = s.storage.CountStats(storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
 	if err != nil {
 		return handlermodel.NoteStats{}, fmt.Errorf("get note stats: %w", err)
 	}
@@ -93,8 +117,15 @@ func (s *service) Create(dto handlermodel.CreateNoteDTO) (noteUUID string, err e
 	if strings.TrimSpace(dto.CategoryUuid) == "" {
 		return "", apperror.BadRequestError("category_uuid is required")
 	}
+	if strings.TrimSpace(dto.WorkspaceID) == "" {
+		return "", apperror.BadRequestError("workspace_id is required")
+	}
 	dto.Body = strings.TrimSpace(dto.Body)
-	if err = s.storage.CheckTagsExist(dto.Tags, dto.UserUuid); err != nil {
+	scope := storage.Scope{
+		UserUUID:    dto.UserUuid,
+		WorkspaceID: strings.TrimSpace(dto.WorkspaceID),
+	}
+	if err = s.storage.CheckTagsExist(dto.Tags, scope); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return "", apperror.BadRequestError("one or more tags do not exist")
 		}
@@ -105,17 +136,24 @@ func (s *service) Create(dto handlermodel.CreateNoteDTO) (noteUUID string, err e
 		return "", err
 	}
 	now := time.Now().Unix()
+	workspaceID := strings.TrimSpace(dto.WorkspaceID)
+	authorUserUUID := strings.TrimSpace(dto.AuthorUserUUID)
+	if authorUserUUID == "" {
+		authorUserUUID = dto.UserUuid
+	}
 
 	noteUUID, err = s.storage.Create(handlermodel.Note{
-		UserUuid:     dto.UserUuid,
-		Header:       dto.Header,
-		Body:         dto.Body,
-		ShortBody:    makeShortBody(dto.Body),
-		CreatedDate:  now,
-		UpdatedAt:    now,
-		CategoryUuid: dto.CategoryUuid,
-		Tags:         dto.Tags,
-		Event:        dto.Event,
+		UserUuid:       dto.UserUuid,
+		WorkspaceID:    workspaceID,
+		AuthorUserUUID: authorUserUUID,
+		Header:         dto.Header,
+		Body:           dto.Body,
+		ShortBody:      makeShortBody(dto.Body),
+		CreatedDate:    now,
+		UpdatedAt:      now,
+		CategoryUuid:   dto.CategoryUuid,
+		Tags:           dto.Tags,
+		Event:          dto.Event,
 	})
 	if err != nil {
 		return "", fmt.Errorf("create note: %w", err)
@@ -125,12 +163,15 @@ func (s *service) Create(dto handlermodel.CreateNoteDTO) (noteUUID string, err e
 }
 
 func (s *service) Update(
-	noteUUID, userUUID string,
+	noteUUID, userUUID, workspaceID string,
 	dto handlermodel.UpdateNoteDTO,
 	headerUpdate, bodyUpdate, categoryUpdate, tagsUpdate, eventUpdate bool,
 ) (err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return apperror.BadRequestError("user_uuid is required")
+	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return apperror.BadRequestError("workspace_id is required")
 	}
 	if !headerUpdate && !bodyUpdate && !categoryUpdate && !tagsUpdate && !eventUpdate {
 		return apperror.BadRequestError("empty update payload")
@@ -147,7 +188,10 @@ func (s *service) Update(
 		}
 	}
 	if tagsUpdate {
-		if err = s.storage.CheckTagsExist(dto.Tags, userUUID); err != nil {
+		if err = s.storage.CheckTagsExist(dto.Tags, storage.Scope{
+			UserUUID:    userUUID,
+			WorkspaceID: strings.TrimSpace(workspaceID),
+		}); err != nil {
 			if errors.Is(err, apperror.ErrNotFound) {
 				return apperror.BadRequestError("one or more tags do not exist")
 			}
@@ -160,7 +204,10 @@ func (s *service) Update(
 		}
 	}
 
-	err = s.storage.Update(noteUUID, userUUID, handlermodel.Note{
+	err = s.storage.Update(noteUUID, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	}, handlermodel.Note{
 		Header:       dto.Header,
 		Body:         dto.Body,
 		ShortBody:    makeShortBody(dto.Body),
@@ -202,12 +249,18 @@ func validateEvent(event *handlermodel.NoteEvent) error {
 	return nil
 }
 
-func (s *service) Delete(noteUUID, userUUID string) (err error) {
+func (s *service) Delete(noteUUID, userUUID, workspaceID string) (err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return apperror.BadRequestError("user_uuid is required")
 	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return apperror.BadRequestError("workspace_id is required")
+	}
 
-	err = s.storage.Delete(noteUUID, userUUID)
+	err = s.storage.Delete(noteUUID, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return err

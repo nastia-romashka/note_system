@@ -13,15 +13,26 @@ import (
 )
 
 const (
-	usersURL         = "/api/users"
-	userURL          = "/api/users/{uuid}"
-	userProfileURL   = "/api/users/{uuid}/profile"
-	userActionsURL   = "/api/users/{uuid}/actions"
-	createActionURL  = "/api/user-actions/{uuid}"
-	authenticateURL  = "/api/users/authenticate"
-	userSessionsURL  = "/api/user-sessions"
-	rotateSessionURL = "/api/user-sessions/rotate"
-	revokeSessionURL = "/api/user-sessions/revoke"
+	usersURL                     = "/api/users"
+	userURL                      = "/api/users/{uuid}"
+	userProfileURL               = "/api/users/{uuid}/profile"
+	userWorkspacesURL            = "/api/users/{uuid}/workspaces"
+	userWorkspaceInvitesURL      = "/api/users/{uuid}/workspace-invites"
+	userActionsURL               = "/api/users/{uuid}/actions"
+	createActionURL              = "/api/user-actions/{uuid}"
+	authenticateURL              = "/api/users/authenticate"
+	userSessionsURL              = "/api/user-sessions"
+	rotateSessionURL             = "/api/user-sessions/rotate"
+	revokeSessionURL             = "/api/user-sessions/revoke"
+	workspacesURL                = "/api/workspaces"
+	workspaceURL                 = "/api/workspaces/{uuid}"
+	workspaceMembersURL          = "/api/workspaces/{uuid}/members"
+	workspaceMemberURL           = "/api/workspaces/{uuid}/members/{member_uuid}"
+	workspaceInvitesURL          = "/api/workspaces/{uuid}/invites"
+	acceptWorkspaceInviteURL     = "/api/workspaces/invites/{uuid}/accept"
+	declineWorkspaceInviteURL    = "/api/workspaces/invites/{uuid}/decline"
+	internalPersonalWorkspaceURL = "/internal/users/{uuid}/personal-workspace"
+	internalWorkspaceAccessURL   = "/internal/workspaces/{uuid}/access"
 )
 
 type UserService interface {
@@ -35,6 +46,18 @@ type UserService interface {
 	CreateSession(dto CreateUserSessionDTO) error
 	RotateSession(dto RotateUserSessionDTO) (UserSession, error)
 	RevokeSession(refreshTokenHash string) error
+	GetWorkspaces(userUUID string) ([]Workspace, error)
+	GetWorkspace(workspaceUUID string) (Workspace, error)
+	GetPersonalWorkspace(userUUID string) (Workspace, error)
+	CreateWorkspace(dto CreateWorkspaceDTO) (Workspace, error)
+	GetWorkspaceMembers(workspaceUUID string) ([]WorkspaceMember, error)
+	UpdateWorkspaceMember(workspaceUUID, memberUserUUID string, dto UpdateWorkspaceMemberDTO) (WorkspaceMember, error)
+	GetWorkspaceInvites(userUUID string) ([]WorkspaceInvite, error)
+	GetWorkspaceSentInvites(workspaceUUID, actorUserUUID string) ([]WorkspaceInvite, error)
+	CreateWorkspaceInvite(workspaceUUID string, dto CreateWorkspaceInviteDTO) (WorkspaceInvite, error)
+	AcceptWorkspaceInvite(inviteUUID, userUUID string) (Workspace, error)
+	DeclineWorkspaceInvite(inviteUUID, userUUID string) error
+	GetWorkspaceAccess(workspaceUUID, userUUID string) (WorkspaceAccess, error)
 }
 
 type Handler struct {
@@ -47,12 +70,24 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+userURL, apperror.Middleware(h.GetUser))
 	mux.HandleFunc("GET "+userProfileURL, apperror.Middleware(h.GetUserProfile))
 	mux.HandleFunc("PATCH "+userProfileURL, apperror.Middleware(h.UpdateUserProfile))
+	mux.HandleFunc("GET "+userWorkspacesURL, apperror.Middleware(h.GetUserWorkspaces))
+	mux.HandleFunc("GET "+userWorkspaceInvitesURL, apperror.Middleware(h.GetUserWorkspaceInvites))
 	mux.HandleFunc("GET "+userActionsURL, apperror.Middleware(h.GetUserActions))
 	mux.HandleFunc("POST "+createActionURL, apperror.Middleware(h.CreateUserAction))
 	mux.HandleFunc("POST "+authenticateURL, apperror.Middleware(h.Authenticate))
 	mux.HandleFunc("POST "+userSessionsURL, apperror.Middleware(h.CreateUserSession))
 	mux.HandleFunc("POST "+rotateSessionURL, apperror.Middleware(h.RotateUserSession))
 	mux.HandleFunc("POST "+revokeSessionURL, apperror.Middleware(h.RevokeUserSession))
+	mux.HandleFunc("POST "+workspacesURL, apperror.Middleware(h.CreateWorkspace))
+	mux.HandleFunc("GET "+workspaceURL, apperror.Middleware(h.GetWorkspace))
+	mux.HandleFunc("GET "+workspaceMembersURL, apperror.Middleware(h.GetWorkspaceMembers))
+	mux.HandleFunc("PATCH "+workspaceMemberURL, apperror.Middleware(h.UpdateWorkspaceMember))
+	mux.HandleFunc("GET "+workspaceInvitesURL, apperror.Middleware(h.GetWorkspaceInvites))
+	mux.HandleFunc("POST "+workspaceInvitesURL, apperror.Middleware(h.CreateWorkspaceInvite))
+	mux.HandleFunc("POST "+acceptWorkspaceInviteURL, apperror.Middleware(h.AcceptWorkspaceInvite))
+	mux.HandleFunc("POST "+declineWorkspaceInviteURL, apperror.Middleware(h.DeclineWorkspaceInvite))
+	mux.HandleFunc("GET "+internalPersonalWorkspaceURL, apperror.Middleware(h.GetPersonalWorkspace))
+	mux.HandleFunc("GET "+internalWorkspaceAccessURL, apperror.Middleware(h.GetWorkspaceAccess))
 }
 
 func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) error {

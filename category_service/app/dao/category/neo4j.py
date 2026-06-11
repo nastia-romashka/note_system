@@ -1,8 +1,8 @@
 from dao.category.category import CategoryDAO
 from dao.model.dto import (
     CreateCategoryDTO,
-    CreateUserGraphLinkDTO,
     CreateGraphNoteDTO,
+    CreateUserGraphLinkDTO,
     DeleteCategoryDTO,
     DeleteUserGraphLinkDTO,
     UpdateCategoryDTO,
@@ -22,32 +22,37 @@ class Neo4jCategoryDAO(CategoryDAO):
         self.storage = storage
         self._prepare_graph_schema()
 
-    def find_user_categories(self, user_uuid: str) -> list[Category]:
-        result = self.storage.find(
+    def find_workspace_categories(self, workspace_id: str) -> list[Category]:
+        rows = self.storage.find(
             """
-            MATCH path = (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(c:Category)
-            WHERE NOT (c)-[:CHILD]->(:Category)
-            WITH collect(path) AS paths
-            CALL apoc.paths.toJsonTree(paths) YIELD value
-            RETURN value
+            MATCH (workspace:Workspace {id: $workspace_id})
+            OPTIONAL MATCH (workspace)-[:HAS_CATEGORY|CHILD*1..]->(category:Category)
+            WITH DISTINCT category
+            WHERE category IS NOT NULL
+            OPTIONAL MATCH (parent:Category {workspace_id: $workspace_id})-[:CHILD]->(category)
+            RETURN
+                category.id AS id,
+                category.workspace_id AS workspace_id,
+                category.author_user_uuid AS author_user_uuid,
+                category.name AS name,
+                category.color AS color,
+                category.created_at AS created_at,
+                parent.id AS parent_uuid
+            ORDER BY category.created_at ASC, category.name ASC
             """,
-            {"user_uuid": user_uuid},
+            {"workspace_id": workspace_id},
         )
 
-        if not result:
-            return []
+        return self._build_category_tree(rows)
 
-        own_categories = result[0].get("value", {}).get("own", [])
-        return self._parse_categories(categories=own_categories)
-
-    def count_user_categories(self, user_uuid: str) -> CategoryStats:
+    def count_workspace_categories(self, workspace_id: str) -> CategoryStats:
         result = self.storage.execute(
             """
-            MATCH (u:User {id: $user_uuid})
-            OPTIONAL MATCH (u)-[:OWN|CHILD*1..]->(c:Category)
-            RETURN count(DISTINCT c) AS categories_count
+            MATCH (workspace:Workspace {id: $workspace_id})
+            OPTIONAL MATCH (workspace)-[:HAS_CATEGORY|CHILD*1..]->(category:Category)
+            RETURN count(DISTINCT category) AS categories_count
             """,
-            {"user_uuid": user_uuid},
+            {"workspace_id": workspace_id},
         )
 
         if not result:
@@ -55,17 +60,19 @@ class Neo4jCategoryDAO(CategoryDAO):
 
         return CategoryStats(categories_count=result[0]["categories_count"])
 
-    def find_user_graph(self, user_uuid: str) -> GraphData:
+    def find_workspace_graph(self, workspace_id: str) -> GraphData:
         category_rows = self.storage.find(
             """
-            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(category:Category)
+            MATCH (workspace:Workspace {id: $workspace_id})-[:HAS_CATEGORY|CHILD*1..]->(category:Category)
             RETURN DISTINCT
                 category.id AS id,
+                category.workspace_id AS workspace_id,
+                category.author_user_uuid AS author_user_uuid,
                 category.name AS label,
                 category.color AS color,
                 category.created_at AS created_at
             """,
-            {"user_uuid": user_uuid},
+            {"workspace_id": workspace_id},
         )
 
         if not category_rows:
@@ -76,35 +83,38 @@ class Neo4jCategoryDAO(CategoryDAO):
                 id=row["id"],
                 type="category",
                 label=row["label"],
+                workspace_id=row.get("workspace_id"),
+                author_user_uuid=row.get("author_user_uuid"),
                 color=row.get("color"),
                 created_at=row.get("created_at"),
             )
             for row in category_rows
         ]
-        category_ids = [node.id for node in category_nodes]
 
         category_edge_rows = self.storage.find(
             """
-            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(parent:Category)-[:CHILD]->(child:Category)
+            MATCH (workspace:Workspace {id: $workspace_id})-[:HAS_CATEGORY|CHILD*1..]->(parent:Category)-[:CHILD]->(child:Category)
             RETURN DISTINCT
                 parent.id AS source,
                 child.id AS target,
                 "CHILD" AS type
             """,
-            {"user_uuid": user_uuid},
+            {"workspace_id": workspace_id},
         )
 
         note_rows = self.storage.find(
             """
-            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(category:Category)-[:HAS_NOTE]->(note:Note {user_uuid: $user_uuid})
+            MATCH (workspace:Workspace {id: $workspace_id})-[:HAS_CATEGORY|CHILD*1..]->(category:Category)-[:HAS_NOTE]->(note:Note {workspace_id: $workspace_id})
             RETURN DISTINCT
                 category.id AS category_id,
                 note.uuid AS id,
+                note.workspace_id AS workspace_id,
+                note.author_user_uuid AS author_user_uuid,
                 note.header AS label,
                 note.category_uuid AS category_uuid,
-                note.created_date AS created_at
+                note.created_at AS created_at
             """,
-            {"user_uuid": user_uuid},
+            {"workspace_id": workspace_id},
         )
 
         note_nodes = [
@@ -112,12 +122,13 @@ class Neo4jCategoryDAO(CategoryDAO):
                 id=row["id"],
                 type="note",
                 label=row["label"],
+                workspace_id=row.get("workspace_id"),
+                author_user_uuid=row.get("author_user_uuid"),
                 category_uuid=row.get("category_uuid"),
                 created_at=row.get("created_at"),
             )
             for row in note_rows
         ]
-        note_ids = [node.id for node in note_nodes]
 
         has_note_edge_rows = [
             {
@@ -131,70 +142,63 @@ class Neo4jCategoryDAO(CategoryDAO):
 
         custom_graph_edge_rows = self.storage.find(
             """
-            CALL {
-                WITH $category_ids AS category_ids
-                UNWIND category_ids AS category_id
-                MATCH (source:Category {id: category_id})-[custom:USER_LINK]->(target)
-                RETURN source, custom, target
-                UNION
-                WITH $note_ids AS note_ids
-                UNWIND note_ids AS note_id
-                MATCH (source:Note {uuid: note_id})-[custom:USER_LINK]->(target)
-                RETURN source, custom, target
-            }
-            WITH source, custom, target
+            MATCH (source)-[relation:USER_LINK {workspace_id: $workspace_id}]->(target)
             WHERE
-                (target:Category AND target.id IN $category_ids)
-                OR
-                (target:Note AND target.uuid IN $note_ids)
+                (
+                    source:Category AND source.workspace_id = $workspace_id
+                    OR
+                    source:Note AND source.workspace_id = $workspace_id
+                )
+                AND
+                (
+                    target:Category AND target.workspace_id = $workspace_id
+                    OR
+                    target:Note AND target.workspace_id = $workspace_id
+                )
             RETURN DISTINCT
                 coalesce(source.id, source.uuid) AS source,
                 coalesce(target.id, target.uuid) AS target,
-                type(custom) AS type
+                type(relation) AS type
             """,
-            {
-                "category_ids": category_ids,
-                "note_ids": note_ids,
-            },
+            {"workspace_id": workspace_id},
         )
 
         nodes = category_nodes + note_nodes
-        edge_rows = (
-            category_edge_rows
-            + has_note_edge_rows
-            + custom_graph_edge_rows
-        )
+        edge_rows = category_edge_rows + has_note_edge_rows + custom_graph_edge_rows
         edges = [
             GraphEdge(**edge)
             for edge in edge_rows
             if edge.get("source") and edge.get("target") and edge.get("type")
         ]
-        return GraphData(nodes=nodes, edges=edges)
 
-    def check_user_exist(self, user_uuid: str) -> bool:
-        return self._check_entity_exist(
-            entity="User",
-            property_name="id",
-            property_value=user_uuid,
-        )
+        return GraphData(nodes=nodes, edges=edges)
 
     def create_root_category(self, category: CreateCategoryDTO) -> Category:
         color = category.color or DEFAULT_CATEGORY_COLOR
         result = self.storage.create(
             """
-            MERGE (u:User {id: $user_uuid})
-            CREATE (c:Category {
-                name: $name,
+            MERGE (workspace:Workspace {id: $workspace_id})
+            SET
+                workspace.name = coalesce($workspace_name, workspace.name),
+                workspace.type = coalesce($workspace_type, workspace.type)
+            MERGE (user:User {id: $author_user_uuid})
+            MERGE (user)-[:MEMBER_OF]->(workspace)
+            CREATE (category:Category {
                 id: randomUUID(),
-                user_uuid: $user_uuid,
+                workspace_id: $workspace_id,
+                author_user_uuid: $author_user_uuid,
+                name: $name,
                 color: $color,
                 created_at: toInteger(timestamp() / 1000)
             })
-            CREATE (u)-[:OWN]->(c)
-            RETURN c.id AS category_id, c.created_at AS category_created_at
+            CREATE (workspace)-[:HAS_CATEGORY]->(category)
+            RETURN category.id AS category_id, category.created_at AS category_created_at
             """,
             {
-                "user_uuid": category.user_uuid,
+                "workspace_id": category.workspace_id,
+                "workspace_name": category.workspace_name,
+                "workspace_type": category.workspace_type,
+                "author_user_uuid": category.author_user_uuid,
                 "name": category.name,
                 "color": color,
             },
@@ -202,8 +206,9 @@ class Neo4jCategoryDAO(CategoryDAO):
 
         return Category(
             uuid=result[0]["category_id"],
+            workspace_id=category.workspace_id,
+            author_user_uuid=category.author_user_uuid,
             name=category.name,
-            user_uuid=category.user_uuid,
             color=color,
             created_at=result[0].get("category_created_at"),
             parent_uuid=category.parent_uuid,
@@ -217,28 +222,28 @@ class Neo4jCategoryDAO(CategoryDAO):
             property_value=category_uuid,
         )
 
-    def check_category_belongs_to_user(self, category_uuid: str, user_uuid: str) -> bool:
+    def check_category_in_workspace(self, category_uuid: str, workspace_id: str) -> bool:
         result = self.storage.execute(
             """
-            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(c:Category {id: $category_uuid})
-            RETURN c IS NOT NULL AS is_exist
+            MATCH (workspace:Workspace {id: $workspace_id})-[:HAS_CATEGORY|CHILD*1..]->(category:Category {id: $category_uuid})
+            RETURN category IS NOT NULL AS is_exist
             """,
             {
-                "user_uuid": user_uuid,
+                "workspace_id": workspace_id,
                 "category_uuid": category_uuid,
             },
         )
         return bool(result and result[0]["is_exist"])
 
-    def check_note_belongs_to_user(self, note_uuid: str, user_uuid: str) -> bool:
+    def check_note_in_workspace(self, note_uuid: str, workspace_id: str) -> bool:
         result = self.storage.execute(
             """
-            MATCH (note:Note {uuid: $note_uuid, user_uuid: $user_uuid})
+            MATCH (note:Note {uuid: $note_uuid, workspace_id: $workspace_id})
             RETURN note IS NOT NULL AS is_exist
             """,
             {
                 "note_uuid": note_uuid,
-                "user_uuid": user_uuid,
+                "workspace_id": workspace_id,
             },
         )
         return bool(result and result[0]["is_exist"])
@@ -247,19 +252,28 @@ class Neo4jCategoryDAO(CategoryDAO):
         color = category.color or DEFAULT_CATEGORY_COLOR
         result = self.storage.create(
             """
-            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(parent:Category {id: $parent_uuid})
-            CREATE (c:Category {
-                name: $name,
+            MATCH (workspace:Workspace {id: $workspace_id})-[:HAS_CATEGORY|CHILD*1..]->(parent:Category {id: $parent_uuid})
+            SET
+                workspace.name = coalesce($workspace_name, workspace.name),
+                workspace.type = coalesce($workspace_type, workspace.type)
+            MERGE (user:User {id: $author_user_uuid})
+            MERGE (user)-[:MEMBER_OF]->(workspace)
+            CREATE (category:Category {
                 id: randomUUID(),
-                user_uuid: $user_uuid,
+                workspace_id: $workspace_id,
+                author_user_uuid: $author_user_uuid,
+                name: $name,
                 color: $color,
                 created_at: toInteger(timestamp() / 1000)
             })
-            CREATE (parent)-[:CHILD]->(c)
-            RETURN c.id AS category_id, c.created_at AS category_created_at
+            CREATE (parent)-[:CHILD]->(category)
+            RETURN category.id AS category_id, category.created_at AS category_created_at
             """,
             {
-                "user_uuid": category.user_uuid,
+                "workspace_id": category.workspace_id,
+                "workspace_name": category.workspace_name,
+                "workspace_type": category.workspace_type,
+                "author_user_uuid": category.author_user_uuid,
                 "parent_uuid": category.parent_uuid,
                 "name": category.name,
                 "color": color,
@@ -268,8 +282,9 @@ class Neo4jCategoryDAO(CategoryDAO):
 
         return Category(
             uuid=result[0]["category_id"],
+            workspace_id=category.workspace_id,
+            author_user_uuid=category.author_user_uuid,
             name=category.name,
-            user_uuid=category.user_uuid,
             color=color,
             created_at=result[0].get("category_created_at"),
             parent_uuid=category.parent_uuid,
@@ -279,15 +294,14 @@ class Neo4jCategoryDAO(CategoryDAO):
     def update_category(self, category: UpdateCategoryDTO) -> None:
         self.storage.update(
             """
-            MATCH (c:Category {id: $category_uuid})
-            WHERE $user_uuid IS NULL OR c.user_uuid = $user_uuid
+            MATCH (category:Category {id: $category_uuid, workspace_id: $workspace_id})
             SET
-                c.name = coalesce($name, c.name),
-                c.color = coalesce($color, c.color)
+                category.name = coalesce($name, category.name),
+                category.color = coalesce($color, category.color)
             """,
             {
                 "category_uuid": category.uuid,
-                "user_uuid": category.user_uuid,
+                "workspace_id": category.workspace_id,
                 "name": category.name,
                 "color": category.color,
             },
@@ -296,14 +310,13 @@ class Neo4jCategoryDAO(CategoryDAO):
     def delete_category(self, category: DeleteCategoryDTO) -> None:
         self.storage.delete(
             """
-            MATCH (c:Category {id: $category_uuid})
-            WHERE $user_uuid IS NULL OR c.user_uuid = $user_uuid
-            OPTIONAL MATCH (c)-[:CHILD*0..]->(child:Category)
-            WITH collect(DISTINCT c) + collect(DISTINCT child) AS raw_categories
+            MATCH (category:Category {id: $category_uuid, workspace_id: $workspace_id})
+            OPTIONAL MATCH (category)-[:CHILD*0..]->(child:Category {workspace_id: $workspace_id})
+            WITH collect(DISTINCT category) + collect(DISTINCT child) AS raw_categories
             UNWIND raw_categories AS category_node
             WITH collect(DISTINCT category_node) AS categories
             UNWIND categories AS category_node
-            OPTIONAL MATCH (category_node)-[:HAS_NOTE]->(note:Note)
+            OPTIONAL MATCH (category_node)-[:HAS_NOTE]->(note:Note {workspace_id: $workspace_id})
             WITH categories, collect(DISTINCT note) AS notes
             WITH categories + notes AS nodes
             UNWIND nodes AS node
@@ -313,36 +326,48 @@ class Neo4jCategoryDAO(CategoryDAO):
             """,
             {
                 "category_uuid": category.uuid,
-                "user_uuid": category.user_uuid,
+                "workspace_id": category.workspace_id,
             },
         )
 
     def create_note(self, note: CreateGraphNoteDTO) -> None:
         self.storage.create(
             """
-            MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(category:Category {id: $category_uuid})
+            MERGE (workspace:Workspace {id: $workspace_id})
+            SET
+                workspace.name = coalesce($workspace_name, workspace.name),
+                workspace.type = coalesce($workspace_type, workspace.type)
+            WITH workspace
+            MATCH (workspace)-[:HAS_CATEGORY|CHILD*1..]->(category:Category {id: $category_uuid})
+            MERGE (user:User {id: $author_user_uuid})
+            MERGE (user)-[:MEMBER_OF]->(workspace)
             MERGE (note:Note {uuid: $note_uuid})
             ON CREATE SET
-                note.user_uuid = $user_uuid,
-                note.created_date = $created_date
+                note.workspace_id = $workspace_id,
+                note.author_user_uuid = $author_user_uuid,
+                note.created_at = $created_at
             WITH category, note
-            WHERE note.user_uuid = $user_uuid
+            WHERE note.workspace_id = $workspace_id
             SET
                 note.category_uuid = $category_uuid,
                 note.header = $header,
-                note.created_date = coalesce(note.created_date, $created_date)
+                note.created_at = coalesce(note.created_at, $created_at),
+                note.author_user_uuid = coalesce(note.author_user_uuid, $author_user_uuid)
             MERGE (category)-[:HAS_NOTE]->(note)
             WITH category, note
-            MATCH (oldCategory:Category)-[oldRelation:HAS_NOTE]->(note)
-            WHERE oldCategory.id <> category.id
-            DELETE oldRelation
+            MATCH (old_category:Category)-[old_relation:HAS_NOTE]->(note)
+            WHERE old_category.id <> category.id
+            DELETE old_relation
             """,
             {
                 "note_uuid": note.uuid,
-                "user_uuid": note.user_uuid,
+                "workspace_id": note.workspace_id,
+                "workspace_name": note.workspace_name,
+                "workspace_type": note.workspace_type,
+                "author_user_uuid": note.author_user_uuid,
                 "category_uuid": note.category_uuid,
                 "header": note.header,
-                "created_date": note.created_date,
+                "created_at": note.created_date,
             },
         )
 
@@ -350,11 +375,11 @@ class Neo4jCategoryDAO(CategoryDAO):
         if note.category_uuid:
             self.storage.update(
                 """
-                MATCH (u:User {id: $user_uuid})-[:OWN|CHILD*1..]->(category:Category {id: $category_uuid})
-                MATCH (note:Note {uuid: $note_uuid, user_uuid: $user_uuid})
-                OPTIONAL MATCH (:Category)-[oldRelation:HAS_NOTE]->(note)
-                WITH category, note, [relation IN collect(oldRelation) WHERE relation IS NOT NULL] AS oldRelations
-                FOREACH (relation IN oldRelations | DELETE relation)
+                MATCH (workspace:Workspace {id: $workspace_id})-[:HAS_CATEGORY|CHILD*1..]->(category:Category {id: $category_uuid})
+                MATCH (note:Note {uuid: $note_uuid, workspace_id: $workspace_id})
+                OPTIONAL MATCH (:Category {workspace_id: $workspace_id})-[old_relation:HAS_NOTE]->(note)
+                WITH category, note, [relation IN collect(old_relation) WHERE relation IS NOT NULL] AS old_relations
+                FOREACH (relation IN old_relations | DELETE relation)
                 SET
                     note.category_uuid = $category_uuid,
                     note.header = coalesce($header, note.header)
@@ -362,7 +387,7 @@ class Neo4jCategoryDAO(CategoryDAO):
                 """,
                 {
                     "note_uuid": note_uuid,
-                    "user_uuid": note.user_uuid,
+                    "workspace_id": note.workspace_id,
                     "category_uuid": note.category_uuid,
                     "header": note.header,
                 },
@@ -371,25 +396,25 @@ class Neo4jCategoryDAO(CategoryDAO):
 
         self.storage.update(
             """
-            MATCH (note:Note {uuid: $note_uuid, user_uuid: $user_uuid})
+            MATCH (note:Note {uuid: $note_uuid, workspace_id: $workspace_id})
             SET note.header = coalesce($header, note.header)
             """,
             {
                 "note_uuid": note_uuid,
-                "user_uuid": note.user_uuid,
+                "workspace_id": note.workspace_id,
                 "header": note.header,
             },
         )
 
-    def delete_note(self, note_uuid: str, user_uuid: str) -> None:
+    def delete_note(self, note_uuid: str, workspace_id: str) -> None:
         self.storage.delete(
             """
-            MATCH (note:Note {uuid: $note_uuid, user_uuid: $user_uuid})
+            MATCH (note:Note {uuid: $note_uuid, workspace_id: $workspace_id})
             DETACH DELETE note
             """,
             {
                 "note_uuid": note_uuid,
-                "user_uuid": user_uuid,
+                "workspace_id": workspace_id,
             },
         )
 
@@ -399,26 +424,28 @@ class Neo4jCategoryDAO(CategoryDAO):
             MATCH (source)
             WHERE
                 (
-                    source:Category AND source.id = $source_id AND source.user_uuid = $user_uuid
+                    source:Category AND source.id = $source_id AND source.workspace_id = $workspace_id
                 )
                 OR
                 (
-                    source:Note AND source.uuid = $source_id AND source.user_uuid = $user_uuid
+                    source:Note AND source.uuid = $source_id AND source.workspace_id = $workspace_id
                 )
             MATCH (target)
             WHERE
                 (
-                    target:Category AND target.id = $target_id AND target.user_uuid = $user_uuid
+                    target:Category AND target.id = $target_id AND target.workspace_id = $workspace_id
                 )
                 OR
                 (
-                    target:Note AND target.uuid = $target_id AND target.user_uuid = $user_uuid
+                    target:Note AND target.uuid = $target_id AND target.workspace_id = $workspace_id
                 )
             WITH source, target
             WHERE elementId(source) <> elementId(target)
-            MERGE (source)-[:USER_LINK]->(target)
+            MERGE (source)-[relation:USER_LINK {workspace_id: $workspace_id}]->(target)
+            ON CREATE SET relation.user_uuid = $user_uuid
             """,
             {
+                "workspace_id": link.workspace_id,
                 "source_id": link.source_id,
                 "target_id": link.target_id,
                 "user_uuid": link.user_uuid,
@@ -428,25 +455,25 @@ class Neo4jCategoryDAO(CategoryDAO):
     def delete_user_graph_link(self, link: DeleteUserGraphLinkDTO) -> None:
         self.storage.delete(
             """
-            MATCH (source)-[relation:USER_LINK]->(target)
+            MATCH (source)-[relation:USER_LINK {workspace_id: $workspace_id}]->(target)
             WHERE
                 (
-                    source:Category AND source.id = $source_id AND source.user_uuid = $user_uuid
+                    source:Category AND source.id = $source_id AND source.workspace_id = $workspace_id
                     OR
-                    source:Note AND source.uuid = $source_id AND source.user_uuid = $user_uuid
+                    source:Note AND source.uuid = $source_id AND source.workspace_id = $workspace_id
                 )
                 AND
                 (
-                    target:Category AND target.id = $target_id AND target.user_uuid = $user_uuid
+                    target:Category AND target.id = $target_id AND target.workspace_id = $workspace_id
                     OR
-                    target:Note AND target.uuid = $target_id AND target.user_uuid = $user_uuid
+                    target:Note AND target.uuid = $target_id AND target.workspace_id = $workspace_id
                 )
             DELETE relation
             """,
             {
+                "workspace_id": link.workspace_id,
                 "source_id": link.source_id,
                 "target_id": link.target_id,
-                "user_uuid": link.user_uuid,
             },
         )
 
@@ -458,52 +485,74 @@ class Neo4jCategoryDAO(CategoryDAO):
     ) -> bool:
         result = self.storage.execute(
             f"""
-            OPTIONAL MATCH (n:{entity} {{{property_name}: $property_value}})
-            RETURN n IS NOT NULL AS is_exist
+            OPTIONAL MATCH (node:{entity} {{{property_name}: $property_value}})
+            RETURN node IS NOT NULL AS is_exist
             """,
             {"property_value": property_value},
         )
         return bool(result and result[0]["is_exist"])
 
-    def _parse_categories(
-        self, categories: list[dict], parent_uuid: str | None = None
-    ) -> list[Category]:
-        parsed_categories: list[Category] = []
+    def _build_category_tree(self, rows: list[dict]) -> list[Category]:
+        if not rows:
+            return []
 
-        for category_data in categories:
-            child_items = category_data.get("child", [])
-            children = self._parse_categories(
-                categories=child_items,
-                parent_uuid=category_data["id"],
-            )
-            parsed_categories.append(
-                Category(
-                    uuid=category_data["id"],
-                    name=category_data["name"],
-                    user_uuid=category_data.get("user_uuid"),
-                    color=category_data.get("color"),
-                    created_at=category_data.get("created_at"),
-                    parent_uuid=parent_uuid,
-                    children=children if children else None,
-                )
-            )
+        categories_by_id: dict[str, Category] = {}
+        parent_by_id: dict[str, str | None] = {}
 
-        return parsed_categories
+        for row in rows:
+            category_id = row.get("id")
+            if not category_id:
+                continue
+
+            categories_by_id[category_id] = Category(
+                uuid=category_id,
+                workspace_id=row["workspace_id"],
+                author_user_uuid=row.get("author_user_uuid"),
+                name=row["name"],
+                color=row.get("color"),
+                created_at=row.get("created_at"),
+                parent_uuid=row.get("parent_uuid"),
+                children=[],
+            )
+            parent_by_id[category_id] = row.get("parent_uuid")
+
+        roots: list[Category] = []
+        for category_id, category in categories_by_id.items():
+            parent_uuid = parent_by_id.get(category_id)
+            if not parent_uuid or parent_uuid not in categories_by_id:
+                roots.append(category)
+                continue
+
+            parent = categories_by_id[parent_uuid]
+            if parent.children is None:
+                parent.children = []
+            parent.children.append(category)
+
+        self._normalize_children(roots)
+        return sorted(roots, key=self._category_sort_key)
+
+    def _normalize_children(self, categories: list[Category]) -> None:
+        for category in categories:
+            if category.children:
+                category.children = sorted(category.children, key=self._category_sort_key)
+                self._normalize_children(category.children)
+            else:
+                category.children = None
+
+    def _category_sort_key(self, category: Category) -> tuple[int, str]:
+        created_at = category.created_at or 0
+        return (created_at, category.name.lower())
 
     def _prepare_graph_schema(self) -> None:
         commands = [
-            "CREATE CONSTRAINT user_id_unique IF NOT EXISTS FOR (u:User) REQUIRE u.id IS UNIQUE",
-            "CREATE CONSTRAINT category_id_unique IF NOT EXISTS FOR (c:Category) REQUIRE c.id IS UNIQUE",
-            "CREATE CONSTRAINT note_uuid_unique IF NOT EXISTS FOR (n:Note) REQUIRE n.uuid IS UNIQUE",
+            "CREATE CONSTRAINT user_id_unique IF NOT EXISTS FOR (user:User) REQUIRE user.id IS UNIQUE",
+            "CREATE CONSTRAINT workspace_id_unique IF NOT EXISTS FOR (workspace:Workspace) REQUIRE workspace.id IS UNIQUE",
+            "CREATE CONSTRAINT category_id_unique IF NOT EXISTS FOR (category:Category) REQUIRE category.id IS UNIQUE",
+            "CREATE CONSTRAINT note_uuid_unique IF NOT EXISTS FOR (note:Note) REQUIRE note.uuid IS UNIQUE",
             """
-            MATCH (u:User)-[:OWN|CHILD*1..]->(c:Category)
-            WHERE c.user_uuid IS NULL
-            SET c.user_uuid = u.id
-            """,
-            """
-            MATCH (c:Category)
-            WHERE c.color IS NULL
-            SET c.color = $default_color
+            MATCH (category:Category)
+            WHERE category.color IS NULL
+            SET category.color = $default_color
             """,
         ]
 
@@ -512,5 +561,4 @@ class Neo4jCategoryDAO(CategoryDAO):
                 self.storage.execute(command, {"default_color": DEFAULT_CATEGORY_COLOR})
             except Exception:
                 # Existing duplicate data should not prevent the service from starting.
-                # The graph can still be cleaned manually before constraints are retried.
                 continue

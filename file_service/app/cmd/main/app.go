@@ -30,6 +30,7 @@ func main() {
 		cfg.Minio.AccessKey,
 		cfg.Minio.SecretKey,
 		cfg.Minio.UseSSL,
+		cfg.Minio.Bucket,
 		logger,
 	)
 	if err != nil {

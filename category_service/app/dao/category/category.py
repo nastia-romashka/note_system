@@ -14,19 +14,15 @@ from dao.model.model import Category, CategoryStats, GraphData
 
 class CategoryDAO(ABC):
     @abstractmethod
-    def find_user_categories(self, user_uuid: str) -> list[Category]:
+    def find_workspace_categories(self, workspace_id: str) -> list[Category]:
         raise NotImplementedError
 
     @abstractmethod
-    def count_user_categories(self, user_uuid: str) -> CategoryStats:
+    def count_workspace_categories(self, workspace_id: str) -> CategoryStats:
         raise NotImplementedError
 
     @abstractmethod
-    def find_user_graph(self, user_uuid: str) -> GraphData:
-        raise NotImplementedError
-
-    @abstractmethod
-    def check_user_exist(self, user_uuid: str) -> bool:
+    def find_workspace_graph(self, workspace_id: str) -> GraphData:
         raise NotImplementedError
 
     @abstractmethod
@@ -38,11 +34,11 @@ class CategoryDAO(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def check_category_belongs_to_user(self, category_uuid: str, user_uuid: str) -> bool:
+    def check_category_in_workspace(self, category_uuid: str, workspace_id: str) -> bool:
         raise NotImplementedError
 
     @abstractmethod
-    def check_note_belongs_to_user(self, note_uuid: str, user_uuid: str) -> bool:
+    def check_note_in_workspace(self, note_uuid: str, workspace_id: str) -> bool:
         raise NotImplementedError
 
     @abstractmethod
@@ -66,7 +62,7 @@ class CategoryDAO(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def delete_note(self, note_uuid: str, user_uuid: str) -> None:
+    def delete_note(self, note_uuid: str, workspace_id: str) -> None:
         raise NotImplementedError
 
     @abstractmethod

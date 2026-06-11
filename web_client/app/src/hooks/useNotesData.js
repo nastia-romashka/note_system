@@ -5,7 +5,7 @@ import { createNote, deleteNote, duplicateNote, fetchNotes, fetchSearchNotes, up
 import { createTag, fetchTags } from "../api/tagsApi";
 import { PREVIEW_DATA } from "../preview/previewData";
 
-export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
+export function useNotesData({ token, workspaceId, uiPreview, setMessage, setLoading }) {
   const [categories, setCategories] = useState(uiPreview ? PREVIEW_DATA.categories : []);
   const [notes, setNotes] = useState(uiPreview ? PREVIEW_DATA.notes["cat-1"] : []);
   const [tags, setTags] = useState(uiPreview ? PREVIEW_DATA.tags : []);
@@ -60,8 +60,9 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
       return;
     }
 
-    void bootstrap();
-  }, [token]);
+    resetWorkspaceState();
+    void bootstrap("", true);
+  }, [token, workspaceId]);
 
   useEffect(() => {
     if (uiPreview) {
@@ -79,7 +80,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     }
 
     void loadNotes(selectedCategoryId, selectedNoteId);
-  }, [selectedCategoryId, token]);
+  }, [selectedCategoryId, token, workspaceId]);
 
   useEffect(() => {
     if (uiPreview || !token) {
@@ -97,7 +98,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     }, 250);
 
     return () => window.clearTimeout(timeoutId);
-  }, [search, token]);
+  }, [search, token, workspaceId]);
 
   useEffect(() => {
     if (!selectedNote) {
@@ -113,14 +114,14 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     });
   }, [selectedNote, tags]);
 
-  async function bootstrap(preferredCategoryId = selectedCategoryId, includeTags = true) {
+  async function bootstrap(preferredCategoryId = "", includeTags = true) {
     try {
       setLoading(true);
       setMessage(null);
 
       const [categoryList, tagList] = await Promise.all([
-        fetchCategories(token),
-        includeTags ? fetchTags(token) : Promise.resolve(tags),
+        fetchCategories(token, workspaceId),
+        includeTags ? fetchTags(token, workspaceId) : Promise.resolve(tags),
       ]);
 
       setCategories(categoryList);
@@ -143,7 +144,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
   async function loadNotes(categoryId, preferredNoteId) {
     try {
       setLoading(true);
-      const noteList = await fetchNotes(token, categoryId);
+      const noteList = await fetchNotes(token, categoryId, workspaceId);
       applyNotesList(noteList, preferredNoteId);
     } catch (error) {
       handleError(error);
@@ -154,7 +155,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
   async function loadSearchResults(query) {
     try {
-      const noteList = await fetchSearchNotes(token, { query });
+      const noteList = await fetchSearchNotes(token, { query, workspaceId });
       setSearchResults(Array.isArray(noteList) ? noteList : []);
     } catch (error) {
       setSearchResults([]);
@@ -274,10 +275,15 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     try {
       setLoading(true);
-      const duplicated = await duplicateNote(token, duplicateDialog.sourceNoteUuid, {
-        category_uuid: duplicateDialog.categoryUuid,
-        header,
-      });
+      const duplicated = await duplicateNote(
+        token,
+        duplicateDialog.sourceNoteUuid,
+        {
+          category_uuid: duplicateDialog.categoryUuid,
+          header,
+        },
+        workspaceId,
+      );
 
       setDuplicateDialog(null);
       setSelectedCategoryId(duplicated.category_uuid);
@@ -299,7 +305,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     try {
       setLoading(true);
-      await createCategory(token, categoryForm);
+      await createCategory(token, categoryForm, workspaceId);
       setCategoryForm({ name: "", color: randomCoolColor() });
       setMessage({ type: "success", text: "Категория создана." });
       await bootstrap(selectedCategoryId, false);
@@ -327,11 +333,15 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     try {
       setLoading(true);
-      await createCategory(token, {
-        name: subcategoryDraft.trim(),
-        color: randomCoolColor(),
-        parent_uuid: subcategoryParent.uuid,
-      });
+      await createCategory(
+        token,
+        {
+          name: subcategoryDraft.trim(),
+          color: randomCoolColor(),
+          parent_uuid: subcategoryParent.uuid,
+        },
+        workspaceId,
+      );
       setMessage({ type: "success", text: `Подкатегория для "${subcategoryParent.name}" создана.` });
       setSubcategoryParent(null);
       setSubcategoryDraft("");
@@ -405,7 +415,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     try {
       setLoading(true);
-      await updateCategory(token, categoryEditor.uuid, { name });
+      await updateCategory(token, categoryEditor.uuid, { name }, workspaceId);
       setMessage({ type: "success", text: "Название категории обновлено." });
       await bootstrap(selectedCategoryId, false);
       setCategoryEditor(null);
@@ -429,7 +439,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     try {
       setLoading(true);
-      await updateCategory(token, categoryEditor.uuid, { name, color });
+      await updateCategory(token, categoryEditor.uuid, { name, color }, workspaceId);
       setMessage({ type: "success", text: "Цвет категории обновлен." });
       await bootstrap(selectedCategoryId, false);
       setCategoryEditor((current) => (current ? { ...current, color, mode: "menu" } : current));
@@ -449,7 +459,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     try {
       setLoading(true);
-      await deleteCategory(token, categoryId);
+      await deleteCategory(token, categoryId, workspaceId);
       setMessage({ type: "success", text: "Категория удалена." });
 
       if (selectedCategoryId === categoryId) {
@@ -480,7 +490,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     for (const name of missingNames) {
       try {
-        await createTag(token, name);
+        await createTag(token, name, workspaceId);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message.toLowerCase() : "";
         if (!errorMessage.includes("already exists")) {
@@ -490,7 +500,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     }
 
     if (missingNames.length > 0) {
-      availableTags = await fetchTags(token);
+      availableTags = await fetchTags(token, workspaceId);
       setTags(availableTags);
     }
 
@@ -519,12 +529,16 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     try {
       setLoading(true);
       const tagUUIDs = await ensureTagUUIDs(noteForm.tags);
-      await createNote(token, {
-        header,
-        body: noteForm.body.trim(),
-        category_uuid: selectedCategoryId,
-        tags: tagUUIDs,
-      });
+      await createNote(
+        token,
+        {
+          header,
+          body: noteForm.body.trim(),
+          category_uuid: selectedCategoryId,
+          tags: tagUUIDs,
+        },
+        workspaceId,
+      );
       setNoteForm({ header: "", body: "", tags: "" });
       setMessage({ type: "success", text: "Заметка создана." });
       await loadNotes(selectedCategoryId, "");
@@ -555,12 +569,17 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     try {
       setLoading(true);
       const tagUUIDs = await ensureTagUUIDs(noteEditorForm.tags);
-      await updateNote(token, selectedNote.uuid, {
-        header: noteEditorForm.header,
-        body: noteEditorForm.body,
-        tags: tagUUIDs,
-        event: noteEditorForm.scheduled ? eventPayload : null,
-      });
+      await updateNote(
+        token,
+        selectedNote.uuid,
+        {
+          header: noteEditorForm.header,
+          body: noteEditorForm.body,
+          tags: tagUUIDs,
+          event: noteEditorForm.scheduled ? eventPayload : null,
+        },
+        workspaceId,
+      );
       setMessage({ type: "success", text: "Заметка обновлена." });
       await loadNotes(selectedCategoryId, selectedNote.uuid);
     } catch (error) {
@@ -578,7 +597,7 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
 
     try {
       setLoading(true);
-      await deleteNote(token, noteId);
+      await deleteNote(token, noteId, workspaceId);
       setMessage({ type: "success", text: "Заметка удалена." });
       await loadNotes(selectedCategoryId, "");
     } catch (error) {
@@ -593,15 +612,23 @@ export function useNotesData({ token, uiPreview, setMessage, setLoading }) {
     setSubcategoryDraft("");
   }
 
-  function resetNotesState() {
+  function resetWorkspaceState() {
     setCategories([]);
     setNotes([]);
     setSearchResults([]);
     setTags([]);
     setCategoryEditor(null);
+    setPendingCategoryDelete(null);
+    setSubcategoryParent(null);
+    setSubcategoryDraft("");
+    setDuplicateDialog(null);
     setSelectedCategoryId("");
     setSelectedNoteId("");
     setSearch("");
+  }
+
+  function resetNotesState() {
+    resetWorkspaceState();
   }
 
   function handleError(error) {

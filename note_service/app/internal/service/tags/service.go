@@ -18,12 +18,18 @@ func NewService(storage storage.Storage) *service {
 	return &service{storage: storage}
 }
 
-func (s *service) Get(tagUUIDs []string, userUUID string) (tags []handlermodel.Tag, err error) {
+func (s *service) Get(tagUUIDs []string, userUUID, workspaceID string) (tags []handlermodel.Tag, err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return nil, apperror.BadRequestError("user_uuid is required")
 	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, apperror.BadRequestError("workspace_id is required")
+	}
 
-	tags, err = s.storage.FindTags(tagUUIDs, userUUID)
+	tags, err = s.storage.FindTags(tagUUIDs, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return nil, err
@@ -36,15 +42,23 @@ func (s *service) Get(tagUUIDs []string, userUUID string) (tags []handlermodel.T
 
 func (s *service) Create(dto handlermodel.CreateTagDTO) (tagUUID string, err error) {
 	dto.UserUuid = strings.TrimSpace(dto.UserUuid)
+	dto.WorkspaceID = strings.TrimSpace(dto.WorkspaceID)
 	dto.Name = strings.TrimSpace(dto.Name)
 	if dto.UserUuid == "" {
 		return "", apperror.BadRequestError("user_uuid is required")
+	}
+	if dto.WorkspaceID == "" {
+		return "", apperror.BadRequestError("workspace_id is required")
 	}
 	if dto.Name == "" {
 		return "", apperror.BadRequestError("tag name is required")
 	}
 
-	tagUUID, err = s.storage.CreateTag(handlermodel.Tag{UserUuid: dto.UserUuid, Name: dto.Name})
+	tagUUID, err = s.storage.CreateTag(handlermodel.Tag{
+		UserUuid:    dto.UserUuid,
+		WorkspaceID: dto.WorkspaceID,
+		Name:        dto.Name,
+	})
 	if err != nil {
 		return "", fmt.Errorf("create tag: %w", err)
 	}
@@ -52,12 +66,18 @@ func (s *service) Create(dto handlermodel.CreateTagDTO) (tagUUID string, err err
 	return tagUUID, nil
 }
 
-func (s *service) Delete(tagUUID, userUUID string) (err error) {
+func (s *service) Delete(tagUUID, userUUID, workspaceID string) (err error) {
 	if strings.TrimSpace(userUUID) == "" {
 		return apperror.BadRequestError("user_uuid is required")
 	}
+	if strings.TrimSpace(workspaceID) == "" {
+		return apperror.BadRequestError("workspace_id is required")
+	}
 
-	err = s.storage.DeleteTag(tagUUID, userUUID)
+	err = s.storage.DeleteTag(tagUUID, storage.Scope{
+		UserUUID:    userUUID,
+		WorkspaceID: strings.TrimSpace(workspaceID),
+	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return err

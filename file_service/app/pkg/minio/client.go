@@ -18,6 +18,8 @@ type ObjectInfo struct {
 	Key         string
 	Name        string
 	UserUUID    string
+	WorkspaceID string
+	NoteUUID    string
 	Size        int64
 	ContentType string
 }
@@ -114,12 +116,12 @@ func (c *Client) StatFile(ctx context.Context, bucketName, fileID string) (info 
 	return info, nil
 }
 
-func (c *Client) ListFiles(ctx context.Context, bucketName string) (files []ObjectInfo, err error) {
+func (c *Client) ListFiles(ctx context.Context, bucketName, prefix string) (files []ObjectInfo, err error) {
 	reqCtx, cancel := context.WithTimeout(resolveContext(ctx), 15*time.Second)
 	defer cancel()
 
 	var result []ObjectInfo
-	for object := range c.minioClient.ListObjects(reqCtx, bucketName, miniosdk.ListObjectsOptions{}) {
+	for object := range c.minioClient.ListObjects(reqCtx, bucketName, miniosdk.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
 		if object.Err != nil {
 			return nil, fmt.Errorf("list objects from bucket %s: %w", bucketName, object.Err)
 		}
@@ -133,6 +135,8 @@ func (c *Client) ListFiles(ctx context.Context, bucketName string) (files []Obje
 			Key:         info.Key,
 			Name:        objectName(info),
 			UserUUID:    objectUserUUID(info),
+			WorkspaceID: objectWorkspaceID(info),
+			NoteUUID:    objectNoteUUID(info),
 			Size:        info.Size,
 			ContentType: objectContentType(info),
 		})
@@ -141,7 +145,7 @@ func (c *Client) ListFiles(ctx context.Context, bucketName string) (files []Obje
 	return result, nil
 }
 
-func (c *Client) UploadFile(ctx context.Context, bucketName, fileID, fileName, userUUID, contentType string, fileSize int64, reader io.Reader) (err error) {
+func (c *Client) UploadFile(ctx context.Context, bucketName, objectKey, fileName, userUUID, workspaceID, noteUUID, contentType string, fileSize int64, reader io.Reader) (err error) {
 	reqCtx, cancel := context.WithTimeout(resolveContext(ctx), 30*time.Second)
 	defer cancel()
 
@@ -149,15 +153,17 @@ func (c *Client) UploadFile(ctx context.Context, bucketName, fileID, fileName, u
 		contentType = "application/octet-stream"
 	}
 
-	_, err = c.minioClient.PutObject(reqCtx, bucketName, fileID, reader, fileSize, miniosdk.PutObjectOptions{
+	_, err = c.minioClient.PutObject(reqCtx, bucketName, objectKey, reader, fileSize, miniosdk.PutObjectOptions{
 		ContentType: contentType,
 		UserMetadata: map[string]string{
-			"Name":      fileName,
-			"User-Uuid": userUUID,
+			"Name":         fileName,
+			"User-Uuid":    userUUID,
+			"Workspace-Id": workspaceID,
+			"Note-Uuid":    noteUUID,
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("upload file %s to bucket %s: %w", fileID, bucketName, err)
+		return fmt.Errorf("upload file %s to bucket %s: %w", objectKey, bucketName, err)
 	}
 
 	return nil
@@ -190,6 +196,14 @@ func objectName(info miniosdk.ObjectInfo) string {
 
 func objectUserUUID(info miniosdk.ObjectInfo) string {
 	return info.UserMetadata["User-Uuid"]
+}
+
+func objectWorkspaceID(info miniosdk.ObjectInfo) string {
+	return info.UserMetadata["Workspace-Id"]
+}
+
+func objectNoteUUID(info miniosdk.ObjectInfo) string {
+	return info.UserMetadata["Note-Uuid"]
 }
 
 func objectContentType(info miniosdk.ObjectInfo) string {

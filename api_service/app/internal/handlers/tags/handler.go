@@ -7,9 +7,12 @@ import (
 
 	"myproject/internal/apperror"
 	noteclient "myproject/internal/client/note"
+	userclient "myproject/internal/client/user"
 	"myproject/internal/handlers/actionlog"
+	"myproject/internal/requestctx"
 	"myproject/pkg/logging"
 	"myproject/pkg/middleware/jwt"
+	workspacemw "myproject/pkg/middleware/workspace"
 )
 
 const (
@@ -18,14 +21,15 @@ const (
 )
 
 type Handler struct {
-	Logger         logging.Logger
-	NoteService    noteclient.NoteService
-	ActionRecorder actionlog.Recorder
+	Logger           logging.Logger
+	NoteService      noteclient.NoteService
+	WorkspaceService userclient.UserService
+	ActionRecorder   actionlog.Recorder
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc(http.MethodPost+" "+tagsURL, jwt.JWTMiddleware(apperror.Middleware(h.CreateTag)))
-	mux.HandleFunc(http.MethodDelete+" "+tagURL, jwt.JWTMiddleware(apperror.Middleware(h.DeleteTag)))
+	mux.HandleFunc(http.MethodPost+" "+tagsURL, jwt.JWTMiddleware(workspacemw.Middleware(h.WorkspaceService, apperror.Middleware(h.CreateTag))))
+	mux.HandleFunc(http.MethodDelete+" "+tagURL, jwt.JWTMiddleware(workspacemw.Middleware(h.WorkspaceService, apperror.Middleware(h.DeleteTag))))
 }
 
 func (h *Handler) CreateTag(w http.ResponseWriter, r *http.Request) error {
@@ -38,7 +42,12 @@ func (h *Handler) CreateTag(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID, err := h.workspaceIDFromContext(r)
+	if err != nil {
+		return err
+	}
 	dto.UserUuid = userUuid
+	dto.WorkspaceID = workspaceID
 
 	tagUuid, err := h.NoteService.CreateTag(r.Context(), dto)
 	if err != nil {
@@ -62,8 +71,12 @@ func (h *Handler) DeleteTag(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID, err := h.workspaceIDFromContext(r)
+	if err != nil {
+		return err
+	}
 
-	if err := h.NoteService.DeleteTag(r.Context(), tagUuid, userUuid); err != nil {
+	if err := h.NoteService.DeleteTag(r.Context(), tagUuid, userUuid, workspaceID); err != nil {
 		return err
 	}
 	h.ActionRecorder.Record(r, userUuid, "tag.deleted", "tag", tagUuid, nil)
@@ -86,4 +99,8 @@ func (h *Handler) userUUIDFromContext(r *http.Request) (string, error) {
 	}
 
 	return userUUID, nil
+}
+
+func (h *Handler) workspaceIDFromContext(r *http.Request) (string, error) {
+	return requestctx.WorkspaceID(r)
 }

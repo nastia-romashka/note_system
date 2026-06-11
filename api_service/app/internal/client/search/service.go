@@ -30,16 +30,16 @@ func NewService(baseURL string, logger logging.Logger) SearchService {
 }
 
 type SearchService interface {
-	SearchNotes(ctx context.Context, q, userUUID, categoryUUID string, tagUUIDs []string) ([]byte, error)
+	SearchNotes(ctx context.Context, q, workspaceID, categoryUUID string, tagUUIDs []string) ([]byte, error)
 	UpsertNote(ctx context.Context, note IndexedNote) error
 	UpsertNotes(ctx context.Context, notes []IndexedNote) error
-	DeleteNote(ctx context.Context, noteUUID, userUUID string) error
-	DeleteNotesByUser(ctx context.Context, userUUID string) error
+	DeleteNote(ctx context.Context, noteUUID string) error
+	DeleteNotesByWorkspace(ctx context.Context, workspaceID string) error
 }
 
-func (c *client) SearchNotes(ctx context.Context, q, userUUID, categoryUUID string, tagUUIDs []string) ([]byte, error) {
+func (c *client) SearchNotes(ctx context.Context, q, workspaceID, categoryUUID string, tagUUIDs []string) ([]byte, error) {
 	filters := []rest.FilterOptions{
-		{Field: "user_uuid", Values: []string{userUUID}},
+		{Field: "workspace_id", Values: []string{workspaceID}},
 	}
 	if q != "" {
 		filters = append(filters, rest.FilterOptions{Field: "q", Values: []string{q}})
@@ -104,10 +104,8 @@ func (c *client) UpsertNotes(ctx context.Context, notes []IndexedNote) error {
 	return c.sendJSON(ctx, http.MethodPost, "index/notes/import", notes, 20*time.Second)
 }
 
-func (c *client) DeleteNote(ctx context.Context, noteUUID, userUUID string) error {
-	uri, err := c.base.BuildURL(fmt.Sprintf("index/notes/%s", noteUUID), []rest.FilterOptions{
-		{Field: "user_uuid", Values: []string{userUUID}},
-	})
+func (c *client) DeleteNote(ctx context.Context, noteUUID string) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("index/notes/%s", noteUUID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to build URL. error: %w", err)
 	}
@@ -138,9 +136,9 @@ func (c *client) DeleteNote(ctx context.Context, noteUUID, userUUID string) erro
 	)
 }
 
-func (c *client) DeleteNotesByUser(ctx context.Context, userUUID string) error {
+func (c *client) DeleteNotesByWorkspace(ctx context.Context, workspaceID string) error {
 	uri, err := c.base.BuildURL("index/notes", []rest.FilterOptions{
-		{Field: "user_uuid", Values: []string{userUUID}},
+		{Field: "workspace_id", Values: []string{workspaceID}},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to build URL. error: %w", err)

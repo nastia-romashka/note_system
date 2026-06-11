@@ -18,11 +18,11 @@ const (
 )
 
 type FileService interface {
-	GetFile(noteUUID, fileID, userUUID string) (domainfile.DownloadFile, error)
-	GetFilesByNoteUUID(noteUUID, userUUID string) ([]domainfile.FileInfo, error)
-	GetStats(userUUID string) (domainfile.FileStats, error)
+	GetFile(noteUUID, fileID, userUUID, workspaceID string) (domainfile.DownloadFile, error)
+	GetFilesByNoteUUID(noteUUID, userUUID, workspaceID string) ([]domainfile.FileInfo, error)
+	GetStats(userUUID, workspaceID string) (domainfile.FileStats, error)
 	Create(file domainfile.UploadFile) (domainfile.FileInfo, error)
-	Delete(noteUUID, fileID, userUUID string) error
+	Delete(noteUUID, fileID, userUUID, workspaceID string) error
 }
 
 type Handler struct {
@@ -48,13 +48,14 @@ func (h *Handler) GetFile(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
 	fileID := r.PathValue("id")
 	if fileID == "" {
 		return apperror.BadRequestError("file id is required")
 	}
 
-	file, err := h.FileService.GetFile(noteUUID, fileID, userUUID)
+	file, err := h.FileService.GetFile(noteUUID, fileID, userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -87,8 +88,9 @@ func (h *Handler) GetFilesByNoteUUID(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	files, err := h.FileService.GetFilesByNoteUUID(noteUUID, userUUID)
+	files, err := h.FileService.GetFilesByNoteUUID(noteUUID, userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -110,8 +112,9 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	stats, err := h.FileService.GetStats(userUUID)
+	stats, err := h.FileService.GetStats(userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -146,6 +149,10 @@ func (h *Handler) CreateFile(w http.ResponseWriter, r *http.Request) error {
 	if userUUID == "" {
 		return apperror.BadRequestError("user_uuid form field is required")
 	}
+	workspaceID := r.FormValue("workspace_id")
+	if workspaceID == "" {
+		return apperror.BadRequestError("workspace_id form field is required")
+	}
 
 	files, ok := r.MultipartForm.File["file"]
 	if !ok || len(files) == 0 {
@@ -163,6 +170,7 @@ func (h *Handler) CreateFile(w http.ResponseWriter, r *http.Request) error {
 	created, err := h.FileService.Create(domainfile.UploadFile{
 		Name:        fileHeader.Filename,
 		UserUUID:    userUUID,
+		WorkspaceID: workspaceID,
 		NoteUUID:    noteUUID,
 		Size:        fileHeader.Size,
 		ContentType: fileHeader.Header.Get("Content-Type"),
@@ -179,7 +187,7 @@ func (h *Handler) CreateFile(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Location", fmt.Sprintf("%s/%s?note_uuid=%s", filesURL, created.ID, created.NoteUUID))
+	w.Header().Set("Location", fmt.Sprintf("%s/%s?note_uuid=%s&workspace_id=%s", filesURL, created.ID, created.NoteUUID, created.WorkspaceID))
 	w.WriteHeader(http.StatusCreated)
 	_, _ = w.Write(data)
 	return nil
@@ -199,8 +207,9 @@ func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	if err := h.FileService.Delete(noteUUID, fileID, userUUID); err != nil {
+	if err := h.FileService.Delete(noteUUID, fileID, userUUID, workspaceID); err != nil {
 		return err
 	}
 
@@ -215,4 +224,8 @@ func userUUIDFromQuery(r *http.Request) (string, error) {
 	}
 
 	return userUUID, nil
+}
+
+func workspaceIDFromQuery(r *http.Request) string {
+	return r.URL.Query().Get("workspace_id")
 }

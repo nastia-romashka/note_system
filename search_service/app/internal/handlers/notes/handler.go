@@ -18,11 +18,11 @@ const (
 )
 
 type NoteService interface {
-	Search(q, userUUID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]SearchNote, error)
+	Search(q, workspaceID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]SearchNote, error)
 	Upsert(note IndexedNote) error
 	UpsertMany(notes []IndexedNote) error
-	Delete(noteUUID, userUUID string) error
-	DeleteByUser(userUUID string) error
+	Delete(noteUUID string) error
+	DeleteByWorkspace(workspaceID string) error
 }
 
 type Handler struct {
@@ -39,9 +39,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) SearchNotes(w http.ResponseWriter, r *http.Request) error {
-	userUUID := r.URL.Query().Get("user_uuid")
-	if userUUID == "" {
-		return apperror.BadRequestError("user_uuid is required")
+	workspaceID := r.URL.Query().Get("workspace_id")
+	if workspaceID == "" {
+		return apperror.BadRequestError("workspace_id is required")
 	}
 
 	page := parsePositiveInt(r.URL.Query().Get("page"), 1)
@@ -49,7 +49,7 @@ func (h *Handler) SearchNotes(w http.ResponseWriter, r *http.Request) error {
 
 	notes, err := h.NoteService.Search(
 		r.URL.Query().Get("q"),
-		userUUID,
+		workspaceID,
 		r.URL.Query().Get("category_uuid"),
 		parseTagUUIDs(r.URL.Query()["tag_uuid"]),
 		page,
@@ -109,12 +109,7 @@ func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
 		return apperror.BadRequestError("empty note uuid")
 	}
 
-	userUUID := r.URL.Query().Get("user_uuid")
-	if userUUID == "" {
-		return apperror.BadRequestError("user_uuid is required")
-	}
-
-	if err := h.NoteService.Delete(noteUUID, userUUID); err != nil {
+	if err := h.NoteService.Delete(noteUUID); err != nil {
 		return err
 	}
 
@@ -123,12 +118,12 @@ func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) DeleteNotesByUser(w http.ResponseWriter, r *http.Request) error {
-	userUUID := r.URL.Query().Get("user_uuid")
-	if userUUID == "" {
-		return apperror.BadRequestError("user_uuid is required")
+	workspaceID := r.URL.Query().Get("workspace_id")
+	if workspaceID == "" {
+		return apperror.BadRequestError("workspace_id is required")
 	}
 
-	if err := h.NoteService.DeleteByUser(userUUID); err != nil {
+	if err := h.NoteService.DeleteByWorkspace(workspaceID); err != nil {
 		return err
 	}
 

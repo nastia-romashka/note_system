@@ -170,6 +170,33 @@ func (s *Storage) Create(user handlermodel.User) (userUUID string, err error) {
 		return "", fmt.Errorf("insert user preferences: %w", err)
 	}
 
+	var personalWorkspaceUUID string
+	err = tx.QueryRow(
+		ctx,
+		`
+			INSERT INTO workspaces (name, owner_user_id, visibility)
+			VALUES ('Личное пространство', $1, 'private')
+			RETURNING id::text
+		`,
+		userUUID,
+	).Scan(&personalWorkspaceUUID)
+	if err != nil {
+		return "", fmt.Errorf("insert personal workspace: %w", err)
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`
+			INSERT INTO workspace_members (workspace_id, user_id, role, status, joined_at)
+			VALUES ($1, $2, 'owner', 'active', now())
+		`,
+		personalWorkspaceUUID,
+		userUUID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("insert personal workspace membership: %w", err)
+	}
+
 	if err = tx.Commit(ctx); err != nil {
 		return "", fmt.Errorf("commit create user transaction: %w", err)
 	}

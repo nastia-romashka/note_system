@@ -19,13 +19,13 @@ const (
 )
 
 type NoteService interface {
-	GetOne(noteUUID, userUUID string) (Note, error)
-	GetByCategoryUUID(categoryUUID, userUUID string) ([]Note, error)
-	GetByEventRange(from, to int64, userUUID string) ([]Note, error)
-	GetStats(userUUID string) (NoteStats, error)
+	GetOne(noteUUID, userUUID, workspaceID string) (Note, error)
+	GetByCategoryUUID(categoryUUID, userUUID, workspaceID string) ([]Note, error)
+	GetByEventRange(from, to int64, userUUID, workspaceID string) ([]Note, error)
+	GetStats(userUUID, workspaceID string) (NoteStats, error)
 	Create(dto CreateNoteDTO) (string, error)
-	Update(noteUUID, userUUID string, dto UpdateNoteDTO, headerUpdate, bodyUpdate, categoryUpdate, tagsUpdate, eventUpdate bool) error
-	Delete(noteUUID, userUUID string) error
+	Update(noteUUID, userUUID, workspaceID string, dto UpdateNoteDTO, headerUpdate, bodyUpdate, categoryUpdate, tagsUpdate, eventUpdate bool) error
+	Delete(noteUUID, userUUID, workspaceID string) error
 }
 
 type Handler struct {
@@ -48,6 +48,7 @@ func (h *Handler) GetCalendarNotes(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
 	from, err := parseUnixQuery(r, "from")
 	if err != nil {
@@ -58,7 +59,7 @@ func (h *Handler) GetCalendarNotes(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 
-	notes, err := h.NoteService.GetByEventRange(from, to, userUUID)
+	notes, err := h.NoteService.GetByEventRange(from, to, userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -84,8 +85,9 @@ func (h *Handler) GetNote(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	note, err := h.NoteService.GetOne(noteUUID, userUUID)
+	note, err := h.NoteService.GetOne(noteUUID, userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -111,8 +113,9 @@ func (h *Handler) GetNotesByCategory(w http.ResponseWriter, r *http.Request) err
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	notes, err := h.NoteService.GetByCategoryUUID(categoryUUID, userUUID)
+	notes, err := h.NoteService.GetByCategoryUUID(categoryUUID, userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -134,8 +137,9 @@ func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	stats, err := h.NoteService.GetStats(userUUID)
+	stats, err := h.NoteService.GetStats(userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -160,6 +164,9 @@ func (h *Handler) CreateNote(w http.ResponseWriter, r *http.Request) error {
 		h.Logger.Warn("failed to decode create note payload", "error", err)
 		return apperror.BadRequestError("can't decode")
 	}
+	if dto.AuthorUserUUID == "" {
+		dto.AuthorUserUUID = dto.UserUuid
+	}
 
 	noteUUID, err := h.NoteService.Create(dto)
 	if err != nil {
@@ -180,6 +187,7 @@ func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
 	defer r.Body.Close()
 	bodyBytes, err := io.ReadAll(r.Body)
@@ -209,6 +217,7 @@ func (h *Handler) PartiallyUpdateNote(w http.ResponseWriter, r *http.Request) er
 	if err = h.NoteService.Update(
 		noteUUID,
 		userUUID,
+		workspaceID,
 		dto,
 		headerUpdate,
 		bodyUpdate,
@@ -232,8 +241,9 @@ func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	if err := h.NoteService.Delete(noteUUID, userUUID); err != nil {
+	if err := h.NoteService.Delete(noteUUID, userUUID, workspaceID); err != nil {
 		return err
 	}
 
@@ -248,6 +258,10 @@ func userUUIDFromQuery(r *http.Request) (string, error) {
 	}
 
 	return userUUID, nil
+}
+
+func workspaceIDFromQuery(r *http.Request) string {
+	return r.URL.Query().Get("workspace_id")
 }
 
 func parseUnixQuery(r *http.Request, key string) (int64, error) {

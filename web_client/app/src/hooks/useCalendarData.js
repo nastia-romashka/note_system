@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createNote, fetchCalendarNotes } from "../api/notesApi";
 import { PREVIEW_DATA } from "../preview/previewData";
 
-export function useCalendarData({ token, categories, uiPreview, setMessage, setLoading, onOpenNote }) {
+export function useCalendarData({ token, workspaceId, categories, uiPreview, setMessage, setLoading, onOpenNote }) {
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState(startOfDay(new Date()));
   const [calendarNotes, setCalendarNotes] = useState(uiPreview ? collectPreviewCalendarNotes() : []);
@@ -17,7 +17,7 @@ export function useCalendarData({ token, categories, uiPreview, setMessage, setL
     }
 
     void loadMonth(monthRange.from, monthRange.to);
-  }, [monthRange.from, monthRange.to, token, uiPreview]);
+  }, [monthRange.from, monthRange.to, token, workspaceId, uiPreview]);
 
   const notesByDay = useMemo(() => {
     const buckets = new Map();
@@ -47,7 +47,7 @@ export function useCalendarData({ token, categories, uiPreview, setMessage, setL
   async function loadMonth(from, to) {
     try {
       setLoading(true);
-      const notes = await fetchCalendarNotes(token, { from, to });
+      const notes = await fetchCalendarNotes(token, { from, to, workspaceId });
       setCalendarNotes(Array.isArray(notes) ? notes : []);
     } catch (error) {
       handleError(error);
@@ -123,7 +123,7 @@ export function useCalendarData({ token, categories, uiPreview, setMessage, setL
         category_uuid: createDialog.categoryUuid,
         tags: [],
         event,
-      });
+      }, workspaceId);
       closeCreateDialog();
       await loadMonth(monthRange.from, monthRange.to);
       setMessage({ type: "success", text: "Заметка создана и добавлена в календарь." });

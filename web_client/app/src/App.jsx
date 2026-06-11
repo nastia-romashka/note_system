@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { logoutCurrentSession } from "./api/authApi";
+import { clearStoredWorkspaceId, getStoredWorkspaceId, persistStoredWorkspaceId } from "./api/session";
+import { createWorkspace as createWorkspaceRequest, fetchWorkspaces } from "./api/workspacesApi";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { useCalendarData } from "./hooks/useCalendarData";
 import { useFilesData } from "./hooks/useFilesData";
 import { useGraphData } from "./hooks/useGraphData";
 import { useNotesData } from "./hooks/useNotesData";
 import { useProfileData } from "./hooks/useProfileData";
+import { useWorkspaceSettingsData } from "./hooks/useWorkspaceSettingsData";
 import AuthPage from "./pages/AuthPage/AuthPage";
 import CalendarPage from "./pages/CalendarPage/CalendarPage";
 import GraphPage from "./pages/GraphPage/GraphPage";
@@ -14,22 +17,35 @@ import { ConfirmDialog, DuplicateNoteDialog, SubcategoryDialog } from "./pages/N
 import { FlashMessage } from "./pages/NotesPage/Messages";
 import NotesPage from "./pages/NotesPage/NotesPage";
 import ProfilePage from "./pages/ProfilePage/ProfilePage";
+import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage/WorkspaceSettingsPage";
 
 const UI_PREVIEW = import.meta.env.VITE_UI_PREVIEW === "true";
+
+const PREVIEW_WORKSPACES = [
+  { id: "workspace-design", name: "Дизайн-команда", isPersonal: false },
+  { id: "workspace-family", name: "Семейные планы", isPersonal: false },
+];
 
 function App() {
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [workspaces, setWorkspaces] = useState(() => (UI_PREVIEW ? PREVIEW_WORKSPACES : []));
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState(() =>
+    UI_PREVIEW ? PREVIEW_WORKSPACES[0]?.id || null : getStoredWorkspaceId() || null,
+  );
   const { page, setPage, token, persistSession, clearSession } = useAuthSession(UI_PREVIEW);
+  const activeWorkspaceId = currentWorkspaceId || "";
 
   const notesData = useNotesData({
     token,
+    workspaceId: activeWorkspaceId,
     uiPreview: UI_PREVIEW,
     setMessage,
     setLoading,
   });
   const calendarData = useCalendarData({
     token,
+    workspaceId: activeWorkspaceId,
     categories: notesData.categories,
     uiPreview: UI_PREVIEW,
     setMessage,
@@ -41,6 +57,7 @@ function App() {
   });
   const filesData = useFilesData({
     token,
+    workspaceId: activeWorkspaceId,
     selectedNoteId: notesData.selectedNoteId,
     uiPreview: UI_PREVIEW,
     setMessage,
@@ -50,17 +67,171 @@ function App() {
     token,
     enabled: page === "profile",
     setMessage,
+    uiPreview: UI_PREVIEW,
+    onWorkspaceMembershipChange: (workspaceId) => {
+      void loadWorkspaces(workspaceId);
+    },
   });
   const graphData = useGraphData({
     token,
+    workspaceId: activeWorkspaceId,
     enabled: page === "graph",
     setMessage,
   });
+  const workspaceSettingsData = useWorkspaceSettingsData({
+    token,
+    workspaceId: activeWorkspaceId,
+    enabled: page === "workspace-settings",
+    setMessage,
+    uiPreview: UI_PREVIEW,
+  });
+
+  const currentWorkspace = workspaces.find((workspace) => workspace.id === currentWorkspaceId) || null;
+
+  useEffect(() => {
+    if (UI_PREVIEW) {
+      return;
+    }
+
+    if (!token) {
+      setWorkspaces([]);
+      setCurrentWorkspaceId(null);
+      clearStoredWorkspaceId();
+      return;
+    }
+
+    void loadWorkspaces(getStoredWorkspaceId() || currentWorkspaceId || "");
+  }, [token]);
+
+  useEffect(() => {
+    if (UI_PREVIEW) {
+      return;
+    }
+
+    if (!currentWorkspaceId) {
+      clearStoredWorkspaceId();
+      return;
+    }
+
+    persistStoredWorkspaceId(currentWorkspaceId);
+  }, [currentWorkspaceId]);
+
+  async function loadWorkspaces(preferredWorkspaceId = "") {
+    if (UI_PREVIEW || !token) {
+      return [];
+    }
+
+    try {
+      const list = await fetchWorkspaces(token);
+      const normalized = Array.isArray(list) ? list.map(normalizeWorkspace).filter((workspace) => !workspace.isPersonal) : [];
+      setWorkspaces(normalized);
+
+      const requestedWorkspaceId = preferredWorkspaceId || currentWorkspaceId || getStoredWorkspaceId();
+      if (requestedWorkspaceId && normalized.some((workspace) => workspace.id === requestedWorkspaceId)) {
+        setCurrentWorkspaceId(requestedWorkspaceId);
+      } else {
+        setCurrentWorkspaceId(null);
+      }
+
+      return normalized;
+    } catch (error) {
+      setWorkspaces([]);
+      setCurrentWorkspaceId(null);
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Не удалось загрузить пространства.",
+      });
+      return [];
+    }
+  }
 
   function openTodayInCalendar() {
     const today = new Date();
     calendarData.setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     calendarData.setSelectedDay(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
+  }
+
+  function selectPersonalWorkspace() {
+    notesData.resetNotesState();
+    filesData.resetFilesState();
+    setCurrentWorkspaceId(null);
+  }
+
+  function selectWorkspace(workspaceId) {
+    notesData.resetNotesState();
+    filesData.resetFilesState();
+    setCurrentWorkspaceId(workspaceId);
+  }
+
+  async function createWorkspace(name) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setMessage({ type: "error", text: "Введите название нового пространства." });
+      return false;
+    }
+
+    if (UI_PREVIEW) {
+      const nextWorkspace = {
+        id: `workspace-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        name: trimmedName,
+        isPersonal: false,
+      };
+
+      setWorkspaces((current) => [...current, nextWorkspace]);
+      setCurrentWorkspaceId(nextWorkspace.id);
+      setMessage({ type: "success", text: `Пространство "${trimmedName}" создано.` });
+      return true;
+    }
+
+    if (!token) {
+      setMessage({ type: "error", text: "Сессия недоступна. Войдите заново." });
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      setMessage(null);
+
+      const createdWorkspaceId = await createWorkspaceRequest(token, {
+        name: trimmedName,
+        visibility: "invite_only",
+      });
+      const refreshed = await loadWorkspaces(createdWorkspaceId);
+      const selectedWorkspaceId =
+        createdWorkspaceId ||
+        refreshed.at(-1)?.id ||
+        "";
+
+      notesData.resetNotesState();
+      filesData.resetFilesState();
+      setCurrentWorkspaceId(selectedWorkspaceId || null);
+      setPage("notes");
+      setMessage({ type: "success", text: `Пространство "${trimmedName}" создано.` });
+      return true;
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Не удалось создать пространство.",
+      });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openContextSettings() {
+    if (!currentWorkspace) {
+      setPage("profile");
+      return;
+    }
+
+    setPage("workspace-settings");
+    return;
+
+    setMessage({
+      type: "info",
+      text: `Настройки пространства "${currentWorkspace.name}" добавим следующим этапом.`,
+    });
   }
 
   async function logout() {
@@ -79,6 +250,8 @@ function App() {
     clearSession();
     notesData.resetNotesState();
     filesData.resetFilesState();
+    setWorkspaces([]);
+    setCurrentWorkspaceId(null);
     setMessage({ type: "info", text: "Сессия завершена." });
   }
 
@@ -171,6 +344,8 @@ function App() {
       {page === "notes" && (
         <NotesPage
           loading={loading}
+          currentWorkspace={currentWorkspace}
+          workspaces={workspaces}
           categories={notesData.categories}
           selectedCategory={notesData.selectedCategory}
           selectedCategoryId={notesData.selectedCategoryId}
@@ -180,9 +355,12 @@ function App() {
           selectedNote={notesData.selectedNote}
           selectedNoteId={notesData.selectedNoteId}
           onSelectNote={notesData.handleSelectNote}
-          onOpenProfile={() => setPage("profile")}
+          onOpenProfile={openContextSettings}
           onOpenGraph={() => setPage("graph")}
           onOpenCalendar={() => setPage("calendar")}
+          onSelectPersonalWorkspace={selectPersonalWorkspace}
+          onSelectWorkspace={selectWorkspace}
+          onCreateWorkspace={createWorkspace}
           search={notesData.search}
           onSearch={notesData.setSearch}
           searchResults={notesData.searchResults}
@@ -219,6 +397,8 @@ function App() {
 
       {page === "calendar" && (
         <CalendarPage
+          currentWorkspace={currentWorkspace}
+          workspaces={workspaces}
           currentMonth={calendarData.currentMonth}
           selectedDay={calendarData.selectedDay}
           notesByDay={calendarData.notesByDay}
@@ -243,7 +423,10 @@ function App() {
           onOpenNote={calendarData.openNote}
           onOpenGraph={() => setPage("graph")}
           onOpenNotes={() => setPage("notes")}
-          onOpenProfile={() => setPage("profile")}
+          onOpenProfile={openContextSettings}
+          onSelectPersonalWorkspace={selectPersonalWorkspace}
+          onSelectWorkspace={selectWorkspace}
+          onCreateWorkspace={createWorkspace}
         />
       )}
 
@@ -251,10 +434,13 @@ function App() {
         <ProfilePage
           summary={profileData.summary}
           actions={profileData.actions}
+          workspaceInvites={profileData.workspaceInvites}
           loading={profileData.profileLoading}
           profileForm={profileData.profileForm}
           onProfileFormChange={profileData.setProfileForm}
           onSubmitProfileUpdate={() => void profileData.submitProfileUpdate()}
+          onAcceptWorkspaceInvite={(inviteId) => void profileData.acceptWorkspaceInvite(inviteId)}
+          onDeclineWorkspaceInvite={(inviteId) => void profileData.declineWorkspaceInvite(inviteId)}
           onRefresh={profileData.refreshProfile}
           onBackToNotes={() => setPage("notes")}
           onOpenGraph={() => setPage("graph")}
@@ -265,6 +451,8 @@ function App() {
 
       {page === "graph" && (
         <GraphPage
+          currentWorkspace={currentWorkspace}
+          workspaces={workspaces}
           graph={graphData.graph}
           loading={graphData.graphLoading}
           onCreateGraphLink={graphData.createUserGraphLink}
@@ -275,11 +463,47 @@ function App() {
             notesData.handleOpenGraphNode(node);
             setPage("notes");
           }}
-          onOpenProfile={() => setPage("profile")}
+          onOpenProfile={openContextSettings}
+          onSelectPersonalWorkspace={selectPersonalWorkspace}
+          onSelectWorkspace={selectWorkspace}
+          onCreateWorkspace={createWorkspace}
+        />
+      )}
+
+      {page === "workspace-settings" && (
+        <WorkspaceSettingsPage
+          currentWorkspace={currentWorkspace}
+          workspaces={workspaces}
+          overview={workspaceSettingsData.overview}
+          members={workspaceSettingsData.members}
+          invites={workspaceSettingsData.invites}
+          memberDrafts={workspaceSettingsData.memberDrafts}
+          loading={workspaceSettingsData.loading}
+          inviteForm={workspaceSettingsData.inviteForm}
+          onInviteFormChange={workspaceSettingsData.setInviteForm}
+          onMemberDraftChange={workspaceSettingsData.updateMemberDraft}
+          onSubmitMemberUpdate={(memberUserId) => workspaceSettingsData.submitMemberUpdate(memberUserId)}
+          onSubmitInvite={() => workspaceSettingsData.submitInvite()}
+          onRefresh={workspaceSettingsData.refreshWorkspaceSettings}
+          onOpenNotes={() => setPage("notes")}
+          onOpenGraph={() => setPage("graph")}
+          onOpenCalendar={() => setPage("calendar")}
+          onSelectPersonalWorkspace={selectPersonalWorkspace}
+          onSelectWorkspace={selectWorkspace}
+          onCreateWorkspace={createWorkspace}
         />
       )}
     </div>
   );
+}
+
+function normalizeWorkspace(workspace) {
+  return {
+    id: workspace?.uuid || workspace?.id || "",
+    name: workspace?.name || "Пространство",
+    isPersonal: Boolean(workspace?.is_personal),
+    visibility: workspace?.visibility || "",
+  };
 }
 
 export default App;

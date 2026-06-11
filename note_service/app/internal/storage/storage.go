@@ -11,17 +11,22 @@ type UpdateOptions struct {
 	Event    bool
 }
 
+type Scope struct {
+	UserUUID    string
+	WorkspaceID string
+}
+
 type Storage interface {
 	Create(note handlermodel.Note) (string, error)
-	FindOne(noteUUID, userUUID string) (handlermodel.Note, error)
-	FindByCategoryUUID(categoryUUID, userUUID string) ([]handlermodel.Note, error)
-	FindByEventRange(from, to int64, userUUID string) ([]handlermodel.Note, error)
-	CountStats(userUUID string) (handlermodel.NoteStats, error)
-	Update(noteUUID, userUUID string, note handlermodel.Note, opts UpdateOptions) error
-	Delete(noteUUID, userUUID string) error
+	FindOne(noteUUID string, scope Scope) (handlermodel.Note, error)
+	FindByCategoryUUID(categoryUUID string, scope Scope) ([]handlermodel.Note, error)
+	FindByEventRange(from, to int64, scope Scope) ([]handlermodel.Note, error)
+	CountStats(scope Scope) (handlermodel.NoteStats, error)
+	Update(noteUUID string, scope Scope, note handlermodel.Note, opts UpdateOptions) error
+	Delete(noteUUID string, scope Scope) error
 	CreateTag(tag tagmodel.Tag) (string, error)
-	FindTags(tagUUIDs []string, userUUID string) ([]tagmodel.Tag, error)
-	CheckTagsExist(tagUUIDs []string, userUUID string) error
-	DeleteTag(tagUUID, userUUID string) error
+	FindTags(tagUUIDs []string, scope Scope) ([]tagmodel.Tag, error)
+	CheckTagsExist(tagUUIDs []string, scope Scope) error
+	DeleteTag(tagUUID string, scope Scope) error
 	Ping() error
 }

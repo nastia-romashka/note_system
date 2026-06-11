@@ -17,10 +17,13 @@ const ACTION_LABELS = {
 export default function ProfilePage({
   summary,
   actions,
+  workspaceInvites,
   loading,
   profileForm,
   onProfileFormChange,
   onSubmitProfileUpdate,
+  onAcceptWorkspaceInvite,
+  onDeclineWorkspaceInvite,
   onRefresh,
   onBackToNotes,
   onOpenGraph,
@@ -31,6 +34,7 @@ export default function ProfilePage({
   const profile = summary?.profile || {};
   const stats = summary?.stats || {};
   const upcomingEvents = Array.isArray(summary?.upcoming_events) ? summary.upcoming_events : [];
+  const invites = Array.isArray(workspaceInvites) ? workspaceInvites : [];
 
   return (
     <main className="profile-page">
@@ -104,6 +108,42 @@ export default function ProfilePage({
         <StatCard label="Заметки" value={stats.notes_count} />
         <StatCard label="Теги" value={stats.tags_count} />
         <StatCard label="Файлы" value={stats.files_count} />
+      </section>
+
+      <section className="profile-card action-history">
+        <div className="section-heading">
+          <div>
+            <div className="card-label">Уведомления</div>
+            <h2>Приглашения в рабочие пространства</h2>
+          </div>
+          {loading && <span className="muted-text">Загрузка...</span>}
+        </div>
+
+        <div className="invite-list">
+          {invites.map((invite) => (
+            <article className="invite-card" key={invite.id}>
+              <div className="invite-card-top">
+                <div>
+                  <strong>{invite.workspace_name}</strong>
+                  <span>
+                    Приглашение от {invite.invited_by || "участника"} на роль {formatWorkspaceRole(invite.role)}
+                  </span>
+                </div>
+                <time>{formatDate(invite.created_at)}</time>
+              </div>
+              <p>{invite.message || "Вас пригласили присоединиться к рабочему пространству."}</p>
+              <div className="invite-actions">
+                <button className="secondary-button" type="button" onClick={() => onDeclineWorkspaceInvite(invite.id)}>
+                  Отклонить
+                </button>
+                <button className="primary-button" type="button" onClick={() => onAcceptWorkspaceInvite(invite.id)}>
+                  Принять
+                </button>
+              </div>
+            </article>
+          ))}
+          {!invites.length && <div className="empty-copy">Новых приглашений в рабочие пространства пока нет.</div>}
+        </div>
       </section>
 
       <section className="profile-card action-history">
@@ -249,4 +289,16 @@ function formatDate(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatWorkspaceRole(value) {
+  if (value === "editor") {
+    return "редактора";
+  }
+
+  if (value === "owner") {
+    return "владельца";
+  }
+
+  return "участника";
 }

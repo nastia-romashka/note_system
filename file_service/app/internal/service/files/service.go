@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"mime"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -13,8 +12,6 @@ import (
 	domainfile "file_service/internal/file"
 	"file_service/pkg/logging"
 )
-
-var bucketNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
 
 type service struct {
 	storage          domainfile.Storage
@@ -30,12 +27,16 @@ func NewService(storage domainfile.Storage, logger logging.Logger, maxFileSizeBy
 	}
 }
 
-func (s *service) GetFile(noteUUID, fileID, userUUID string) (file domainfile.DownloadFile, err error) {
+func (s *service) GetFile(noteUUID, fileID, userUUID, workspaceID string) (file domainfile.DownloadFile, err error) {
 	noteUUID, err = validateNoteUUID(noteUUID)
 	if err != nil {
 		return domainfile.DownloadFile{}, err
 	}
 	userUUID, err = validateUserUUID(userUUID)
+	if err != nil {
+		return domainfile.DownloadFile{}, err
+	}
+	workspaceID, err = validateWorkspaceID(workspaceID)
 	if err != nil {
 		return domainfile.DownloadFile{}, err
 	}
@@ -44,7 +45,7 @@ func (s *service) GetFile(noteUUID, fileID, userUUID string) (file domainfile.Do
 		return domainfile.DownloadFile{}, apperror.BadRequestError("file id is required")
 	}
 
-	file, err = s.storage.GetFile(nilContext(), noteUUID, fileID, userUUID)
+	file, err = s.storage.GetFile(nilContext(), noteUUID, fileID, userUUID, workspaceID)
 	if err != nil {
 		return domainfile.DownloadFile{}, fmt.Errorf("get file: %w", err)
 	}
@@ -52,7 +53,7 @@ func (s *service) GetFile(noteUUID, fileID, userUUID string) (file domainfile.Do
 	return file, nil
 }
 
-func (s *service) GetFilesByNoteUUID(noteUUID, userUUID string) (files []domainfile.FileInfo, err error) {
+func (s *service) GetFilesByNoteUUID(noteUUID, userUUID, workspaceID string) (files []domainfile.FileInfo, err error) {
 	noteUUID, err = validateNoteUUID(noteUUID)
 	if err != nil {
 		return nil, err
@@ -61,8 +62,12 @@ func (s *service) GetFilesByNoteUUID(noteUUID, userUUID string) (files []domainf
 	if err != nil {
 		return nil, err
 	}
+	workspaceID, err = validateWorkspaceID(workspaceID)
+	if err != nil {
+		return nil, err
+	}
 
-	files, err = s.storage.GetFilesByNoteUUID(nilContext(), noteUUID, userUUID)
+	files, err = s.storage.GetFilesByNoteUUID(nilContext(), noteUUID, userUUID, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("get files by note uuid: %w", err)
 	}
@@ -70,13 +75,17 @@ func (s *service) GetFilesByNoteUUID(noteUUID, userUUID string) (files []domainf
 	return files, nil
 }
 
-func (s *service) GetStats(userUUID string) (stats domainfile.FileStats, err error) {
+func (s *service) GetStats(userUUID, workspaceID string) (stats domainfile.FileStats, err error) {
 	userUUID, err = validateUserUUID(userUUID)
 	if err != nil {
 		return domainfile.FileStats{}, err
 	}
+	workspaceID, err = validateWorkspaceID(workspaceID)
+	if err != nil {
+		return domainfile.FileStats{}, err
+	}
 
-	stats, err = s.storage.CountFilesByUserUUID(nilContext(), userUUID)
+	stats, err = s.storage.CountFiles(nilContext(), userUUID, workspaceID)
 	if err != nil {
 		return domainfile.FileStats{}, fmt.Errorf("get file stats: %w", err)
 	}
@@ -90,6 +99,10 @@ func (s *service) Create(file domainfile.UploadFile) (created domainfile.FileInf
 		return domainfile.FileInfo{}, err
 	}
 	userUUID, err := validateUserUUID(file.UserUUID)
+	if err != nil {
+		return domainfile.FileInfo{}, err
+	}
+	workspaceID, err := validateWorkspaceID(file.WorkspaceID)
 	if err != nil {
 		return domainfile.FileInfo{}, err
 	}
@@ -115,6 +128,7 @@ func (s *service) Create(file domainfile.UploadFile) (created domainfile.FileInf
 	file.Name = fileName
 	file.NoteUUID = noteUUID
 	file.UserUUID = userUUID
+	file.WorkspaceID = workspaceID
 	file.ContentType = contentType
 
 	if err = s.storage.CreateFile(nilContext(), file); err != nil {
@@ -126,13 +140,14 @@ func (s *service) Create(file domainfile.UploadFile) (created domainfile.FileInf
 		ID:          fileID,
 		Name:        fileName,
 		UserUUID:    userUUID,
+		WorkspaceID: workspaceID,
 		NoteUUID:    noteUUID,
 		Size:        file.Size,
 		ContentType: contentType,
 	}, nil
 }
 
-func (s *service) Delete(noteUUID, fileID, userUUID string) (err error) {
+func (s *service) Delete(noteUUID, fileID, userUUID, workspaceID string) (err error) {
 	noteUUID, err = validateNoteUUID(noteUUID)
 	if err != nil {
 		return err
@@ -141,12 +156,16 @@ func (s *service) Delete(noteUUID, fileID, userUUID string) (err error) {
 	if err != nil {
 		return err
 	}
+	workspaceID, err = validateWorkspaceID(workspaceID)
+	if err != nil {
+		return err
+	}
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
 		return apperror.BadRequestError("file id is required")
 	}
 
-	if err = s.storage.DeleteFile(nilContext(), noteUUID, fileID, userUUID); err != nil {
+	if err = s.storage.DeleteFile(nilContext(), noteUUID, fileID, userUUID, workspaceID); err != nil {
 		return fmt.Errorf("delete file: %w", err)
 	}
 
@@ -187,8 +206,8 @@ func validateNoteUUID(noteUUID string) (string, error) {
 	if noteUUID == "" {
 		return "", apperror.BadRequestError("note_uuid is required")
 	}
-	if !bucketNamePattern.MatchString(noteUUID) {
-		return "", apperror.BadRequestError("note_uuid is not a valid bucket name")
+	if strings.Contains(noteUUID, "/") {
+		return "", apperror.BadRequestError("note_uuid contains invalid characters")
 	}
 
 	return noteUUID, nil
@@ -201,4 +220,16 @@ func validateUserUUID(userUUID string) (string, error) {
 	}
 
 	return userUUID, nil
+}
+
+func validateWorkspaceID(workspaceID string) (string, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return "", apperror.BadRequestError("workspace_id is required")
+	}
+	if strings.Contains(workspaceID, "/") {
+		return "", apperror.BadRequestError("workspace_id contains invalid characters")
+	}
+
+	return workspaceID, nil
 }

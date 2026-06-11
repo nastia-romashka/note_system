@@ -18,6 +18,7 @@ type Config struct {
 		AccessKey string `env:"MINIO_ROOT_USER"`
 		SecretKey string `env:"MINIO_ROOT_PASSWORD"`
 		UseSSL    bool   `yaml:"use_ssl" env:"FILE_SERVICE_MINIO_USE_SSL" env-default:"false"`
+		Bucket    string `yaml:"bucket" env:"FILE_SERVICE_MINIO_BUCKET" env-default:"notes-files"`
 	} `yaml:"minio"`
 	Listen struct {
 		Type   string `yaml:"type" env:"FILE_SERVICE_LISTEN_TYPE" env-default:"port"`
@@ -48,6 +49,7 @@ func GetConfig() *Config {
 			"config loaded",
 			"address", instance.Listen.BindIP+":"+instance.Listen.Port,
 			"minio_endpoint", instance.Minio.Endpoint,
+			"minio_bucket", instance.Minio.Bucket,
 			"max_file_size_mb", instance.Upload.MaxFileSizeMB,
 		)
 	})

@@ -16,9 +16,9 @@ const (
 )
 
 type TagService interface {
-	Get(tagUUIDs []string, userUUID string) ([]Tag, error)
+	Get(tagUUIDs []string, userUUID, workspaceID string) ([]Tag, error)
 	Create(dto CreateTagDTO) (string, error)
-	Delete(tagUUID, userUUID string) error
+	Delete(tagUUID, userUUID, workspaceID string) error
 }
 
 type Handler struct {
@@ -38,8 +38,9 @@ func (h *Handler) GetTags(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	tags, err := h.TagService.Get(tagUUIDs, userUUID)
+	tags, err := h.TagService.Get(tagUUIDs, userUUID, workspaceID)
 	if err != nil {
 		return err
 	}
@@ -64,6 +65,7 @@ func (h *Handler) CreateTag(w http.ResponseWriter, r *http.Request) error {
 		h.Logger.Warn("failed to decode create tag payload", "error", err)
 		return apperror.BadRequestError("can't decode")
 	}
+	dto.WorkspaceID = strings.TrimSpace(dto.WorkspaceID)
 
 	tagUUID, err := h.TagService.Create(dto)
 	if err != nil {
@@ -84,8 +86,9 @@ func (h *Handler) DeleteTag(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	workspaceID := workspaceIDFromQuery(r)
 
-	if err := h.TagService.Delete(tagUUID, userUUID); err != nil {
+	if err := h.TagService.Delete(tagUUID, userUUID, workspaceID); err != nil {
 		return err
 	}
 
@@ -100,6 +103,10 @@ func userUUIDFromQuery(r *http.Request) (string, error) {
 	}
 
 	return userUUID, nil
+}
+
+func workspaceIDFromQuery(r *http.Request) string {
+	return r.URL.Query().Get("workspace_id")
 }
 
 func parseTagIDs(values []string) []string {

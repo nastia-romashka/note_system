@@ -1,8 +1,11 @@
+import WorkspaceContextMenu from "../../components/WorkspaceContextMenu";
 import CategorySection from "./CategorySection";
 import NotesSection from "./NotesSection";
 
 export default function NotesPage({
   loading,
+  currentWorkspace,
+  workspaces,
   categories,
   selectedCategory,
   selectedCategoryId,
@@ -15,6 +18,9 @@ export default function NotesPage({
   onOpenProfile,
   onOpenGraph,
   onOpenCalendar,
+  onSelectPersonalWorkspace,
+  onSelectWorkspace,
+  onCreateWorkspace,
   search,
   onSearch,
   searchResults,
@@ -47,11 +53,30 @@ export default function NotesPage({
   fileInputRef,
   fileDraft,
 }) {
+  const isWorkspaceMode = Boolean(currentWorkspace);
+  const pageTitle = isWorkspaceMode
+    ? `${currentWorkspace.name}: Заметки`
+    : "Заметки";
+  const contextButtonLabel = isWorkspaceMode ? "Настройки пространства" : "Личный кабинет";
+
   return (
     <main className="notes-page">
-      <header className="notes-header">
-        <h1>Заметки</h1>
-        <div className="notes-toolbar">
+      <header className="profile-header page-header">
+        <div className="page-header-copy">
+          <div className="page-header-leading">
+            <WorkspaceContextMenu
+              currentWorkspace={currentWorkspace}
+              workspaces={workspaces}
+              onSelectPersonalWorkspace={onSelectPersonalWorkspace}
+              onSelectWorkspace={onSelectWorkspace}
+              onCreateWorkspace={onCreateWorkspace}
+            />
+            <span className="eyebrow">{isWorkspaceMode ? "Общий режим" : "Личный режим"}</span>
+          </div>
+          <h1>{pageTitle}</h1>
+          <p>Категории, поиск и заметки в одном рабочем контексте.</p>
+        </div>
+        <div className="profile-actions page-header-actions">
           <div className="search-shell">
             <label className="search-box">
               <span>⌕</span>
@@ -80,7 +105,7 @@ export default function NotesPage({
             Календарь
           </button>
           <button className="secondary-button" onClick={onOpenProfile} type="button">
-            Личный кабинет
+            {contextButtonLabel}
           </button>
         </div>
       </header>

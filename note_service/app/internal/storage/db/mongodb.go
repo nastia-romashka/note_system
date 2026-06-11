@@ -29,16 +29,18 @@ type Storage struct {
 }
 
 type mongoNote struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty"`
-	UserUuid     string             `bson:"user_uuid,omitempty"`
-	Header       string             `bson:"header,omitempty"`
-	Body         string             `bson:"body,omitempty"`
-	ShortBody    string             `bson:"short_body,omitempty"`
-	CreatedDate  int64              `bson:"created_date,omitempty"`
-	UpdatedAt    int64              `bson:"updated_at,omitempty"`
-	CategoryUuid string             `bson:"category_uuid,omitempty"`
-	Tags         []string           `bson:"tags,omitempty"`
-	Event        *mongoNoteEvent    `bson:"event,omitempty"`
+	ID             primitive.ObjectID `bson:"_id,omitempty"`
+	UserUuid       string             `bson:"user_uuid,omitempty"`
+	WorkspaceID    string             `bson:"workspace_id,omitempty"`
+	AuthorUserUUID string             `bson:"author_user_uuid,omitempty"`
+	Header         string             `bson:"header,omitempty"`
+	Body           string             `bson:"body,omitempty"`
+	ShortBody      string             `bson:"short_body,omitempty"`
+	CreatedDate    int64              `bson:"created_date,omitempty"`
+	UpdatedAt      int64              `bson:"updated_at,omitempty"`
+	CategoryUuid   string             `bson:"category_uuid,omitempty"`
+	Tags           []string           `bson:"tags,omitempty"`
+	Event          *mongoNoteEvent    `bson:"event,omitempty"`
 }
 
 type mongoNoteEvent struct {
@@ -48,9 +50,10 @@ type mongoNoteEvent struct {
 }
 
 type mongoTag struct {
-	ID       primitive.ObjectID `bson:"_id,omitempty"`
-	UserUuid string             `bson:"user_uuid,omitempty"`
-	Name     string             `bson:"name,omitempty"`
+	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	UserUuid    string             `bson:"user_uuid,omitempty"`
+	WorkspaceID string             `bson:"workspace_id,omitempty"`
+	Name        string             `bson:"name,omitempty"`
 }
 
 func NewStorage(cfg *config.Config) (storage *Storage, err error) {
@@ -95,60 +98,62 @@ func NewStorage(cfg *config.Config) (storage *Storage, err error) {
 	_, err = storage.tagCollection.Indexes().CreateOne(
 		ctx,
 		mongo.IndexModel{
-			Keys:    bson.D{{Key: "user_uuid", Value: 1}, {Key: "name", Value: 1}},
-			Options: options.Index().SetName("user_uuid_1_name_1").SetUnique(true),
+			Keys: bson.D{{Key: "workspace_id", Value: 1}, {Key: "name", Value: 1}},
+			Options: options.Index().
+				SetName("workspace_id_1_name_1").
+				SetUnique(true),
 		},
 	)
 	if err != nil {
-		logger.Error("failed to create tag name index", "error", err)
-		return nil, fmt.Errorf("create tag name index: %w", err)
+		logger.Error("failed to create workspace tag name index", "error", err)
+		return nil, fmt.Errorf("create workspace tag name index: %w", err)
 	}
 
 	_, err = storage.noteCollection.Indexes().CreateOne(
 		ctx,
 		mongo.IndexModel{
 			Keys: bson.D{
-				{Key: "user_uuid", Value: 1},
+				{Key: "workspace_id", Value: 1},
 				{Key: "category_uuid", Value: 1},
 				{Key: "created_date", Value: -1},
 			},
-			Options: options.Index().SetName("user_uuid_1_category_uuid_1_created_date_-1"),
+			Options: options.Index().SetName("workspace_id_1_category_uuid_1_created_date_-1"),
 		},
 	)
 	if err != nil {
-		logger.Error("failed to create note category index", "error", err)
-		return nil, fmt.Errorf("create note category index: %w", err)
+		logger.Error("failed to create workspace note category index", "error", err)
+		return nil, fmt.Errorf("create workspace note category index: %w", err)
 	}
 
 	_, err = storage.noteCollection.Indexes().CreateOne(
 		ctx,
 		mongo.IndexModel{
 			Keys: bson.D{
-				{Key: "user_uuid", Value: 1},
+				{Key: "workspace_id", Value: 1},
 				{Key: "event.enabled", Value: 1},
 				{Key: "event.start_at", Value: 1},
 			},
-			Options: options.Index().SetName("user_uuid_1_event.enabled_1_event.start_at_1"),
+			Options: options.Index().SetName("workspace_id_1_event.enabled_1_event.start_at_1"),
 		},
 	)
 	if err != nil {
-		logger.Error("failed to create note calendar index", "error", err)
-		return nil, fmt.Errorf("create note calendar index: %w", err)
+		logger.Error("failed to create workspace note calendar index", "error", err)
+		return nil, fmt.Errorf("create workspace note calendar index: %w", err)
 	}
 
 	_, err = storage.noteCollection.Indexes().CreateOne(
 		ctx,
 		mongo.IndexModel{
 			Keys: bson.D{
-				{Key: "user_uuid", Value: 1},
+				{Key: "workspace_id", Value: 1},
 				{Key: "updated_at", Value: -1},
 			},
-			Options: options.Index().SetName("user_uuid_1_updated_at_-1"),
+			Options: options.Index().SetName("workspace_id_1_updated_at_-1"),
 		},
 	)
 	if err != nil {
-		logger.Error("failed to create note updated_at index", "error", err)
-		return nil, fmt.Errorf("create note updated_at index: %w", err)
+		logger.Error("failed to create workspace note updated_at index", "error", err)
+		return nil, fmt.Errorf("create workspace note updated_at index: %w", err)
 	}
 
 	if err = storage.Ping(); err != nil {
@@ -190,13 +195,32 @@ func (s *Storage) Create(note handlermodel.Note) (noteUUID string, err error) {
 	return noteUUID, nil
 }
 
-func (s *Storage) FindOne(noteUUID, userUUID string) (note handlermodel.Note, err error) {
+func noteScopeFilter(scope storage.Scope) bson.M {
+	return bson.M{"workspace_id": scope.WorkspaceID}
+}
+
+func noteAccessFilter(scope storage.Scope) bson.M {
+	return noteScopeFilter(scope)
+}
+
+func tagScopeFilter(scope storage.Scope) bson.M {
+	return bson.M{"workspace_id": scope.WorkspaceID}
+}
+
+func noteScopeWithTagFilter(scope storage.Scope, tagUUID string) bson.M {
+	filter := noteScopeFilter(scope)
+	filter["tags"] = tagUUID
+	return filter
+}
+
+func (s *Storage) FindOne(noteUUID string, scope storage.Scope) (note handlermodel.Note, err error) {
 	objectID, err := primitive.ObjectIDFromHex(noteUUID)
 	if err != nil {
 		return handlermodel.Note{}, apperror.BadRequestError("invalid note uuid")
 	}
 
-	filter := bson.M{"_id": objectID, "user_uuid": userUUID}
+	filter := noteAccessFilter(scope)
+	filter["_id"] = objectID
 	findOptions := options.FindOne().SetProjection(bson.M{"short_body": 0})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -216,24 +240,27 @@ func (s *Storage) FindOne(noteUUID, userUUID string) (note handlermodel.Note, er
 	}
 
 	note = handlermodel.Note{
-		Uuid:         noteUUID,
-		UserUuid:     rawNote.UserUuid,
-		Header:       rawNote.Header,
-		Body:         rawNote.Body,
-		CreatedDate:  rawNote.CreatedDate,
-		UpdatedAt:    rawNote.UpdatedAt,
-		CategoryUuid: rawNote.CategoryUuid,
-		Tags:         rawNote.Tags,
-		Event:        toHandlerEvent(rawNote.Event),
+		Uuid:           noteUUID,
+		UserUuid:       rawNote.UserUuid,
+		WorkspaceID:    rawNote.WorkspaceID,
+		AuthorUserUUID: rawNote.AuthorUserUUID,
+		Header:         rawNote.Header,
+		Body:           rawNote.Body,
+		CreatedDate:    rawNote.CreatedDate,
+		UpdatedAt:      rawNote.UpdatedAt,
+		CategoryUuid:   rawNote.CategoryUuid,
+		Tags:           rawNote.Tags,
+		Event:          toHandlerEvent(rawNote.Event),
 	}
 
 	return note, nil
 }
 
-func (s *Storage) FindByCategoryUUID(categoryUUID, userUUID string) (notes []handlermodel.Note, err error) {
+func (s *Storage) FindByCategoryUUID(categoryUUID string, scope storage.Scope) (notes []handlermodel.Note, err error) {
 	notes = make([]handlermodel.Note, 0)
 
-	filter := bson.M{"category_uuid": categoryUUID, "user_uuid": userUUID}
+	filter := noteScopeFilter(scope)
+	filter["category_uuid"] = categoryUUID
 	findOptions := options.Find().SetSort(bson.D{{Key: "created_date", Value: -1}})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -253,16 +280,18 @@ func (s *Storage) FindByCategoryUUID(categoryUUID, userUUID string) (notes []han
 		}
 
 		notes = append(notes, handlermodel.Note{
-			Uuid:         rawNote.ID.Hex(),
-			UserUuid:     rawNote.UserUuid,
-			Header:       rawNote.Header,
-			Body:         rawNote.Body,
-			ShortBody:    rawNote.ShortBody,
-			CreatedDate:  rawNote.CreatedDate,
-			UpdatedAt:    rawNote.UpdatedAt,
-			CategoryUuid: rawNote.CategoryUuid,
-			Tags:         rawNote.Tags,
-			Event:        toHandlerEvent(rawNote.Event),
+			Uuid:           rawNote.ID.Hex(),
+			UserUuid:       rawNote.UserUuid,
+			WorkspaceID:    rawNote.WorkspaceID,
+			AuthorUserUUID: rawNote.AuthorUserUUID,
+			Header:         rawNote.Header,
+			Body:           rawNote.Body,
+			ShortBody:      rawNote.ShortBody,
+			CreatedDate:    rawNote.CreatedDate,
+			UpdatedAt:      rawNote.UpdatedAt,
+			CategoryUuid:   rawNote.CategoryUuid,
+			Tags:           rawNote.Tags,
+			Event:          toHandlerEvent(rawNote.Event),
 		})
 	}
 
@@ -273,14 +302,12 @@ func (s *Storage) FindByCategoryUUID(categoryUUID, userUUID string) (notes []han
 	return notes, nil
 }
 
-func (s *Storage) FindByEventRange(from, to int64, userUUID string) (notes []handlermodel.Note, err error) {
+func (s *Storage) FindByEventRange(from, to int64, scope storage.Scope) (notes []handlermodel.Note, err error) {
 	notes = make([]handlermodel.Note, 0)
 
-	filter := bson.M{
-		"user_uuid":      userUUID,
-		"event.enabled":  true,
-		"event.start_at": bson.M{"$gte": from, "$lte": to},
-	}
+	filter := noteScopeFilter(scope)
+	filter["event.enabled"] = true
+	filter["event.start_at"] = bson.M{"$gte": from, "$lte": to}
 	findOptions := options.Find().SetSort(bson.D{{Key: "event.start_at", Value: 1}, {Key: "_id", Value: 1}})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -299,16 +326,18 @@ func (s *Storage) FindByEventRange(from, to int64, userUUID string) (notes []han
 		}
 
 		notes = append(notes, handlermodel.Note{
-			Uuid:         rawNote.ID.Hex(),
-			UserUuid:     rawNote.UserUuid,
-			Header:       rawNote.Header,
-			Body:         rawNote.Body,
-			ShortBody:    rawNote.ShortBody,
-			CreatedDate:  rawNote.CreatedDate,
-			UpdatedAt:    rawNote.UpdatedAt,
-			CategoryUuid: rawNote.CategoryUuid,
-			Tags:         rawNote.Tags,
-			Event:        toHandlerEvent(rawNote.Event),
+			Uuid:           rawNote.ID.Hex(),
+			UserUuid:       rawNote.UserUuid,
+			WorkspaceID:    rawNote.WorkspaceID,
+			AuthorUserUUID: rawNote.AuthorUserUUID,
+			Header:         rawNote.Header,
+			Body:           rawNote.Body,
+			ShortBody:      rawNote.ShortBody,
+			CreatedDate:    rawNote.CreatedDate,
+			UpdatedAt:      rawNote.UpdatedAt,
+			CategoryUuid:   rawNote.CategoryUuid,
+			Tags:           rawNote.Tags,
+			Event:          toHandlerEvent(rawNote.Event),
 		})
 	}
 
@@ -319,16 +348,16 @@ func (s *Storage) FindByEventRange(from, to int64, userUUID string) (notes []han
 	return notes, nil
 }
 
-func (s *Storage) CountStats(userUUID string) (stats handlermodel.NoteStats, err error) {
+func (s *Storage) CountStats(scope storage.Scope) (stats handlermodel.NoteStats, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	stats.NotesCount, err = s.noteCollection.CountDocuments(ctx, bson.M{"user_uuid": userUUID})
+	stats.NotesCount, err = s.noteCollection.CountDocuments(ctx, noteScopeFilter(scope))
 	if err != nil {
 		return handlermodel.NoteStats{}, fmt.Errorf("count user notes: %w", err)
 	}
 
-	stats.TagsCount, err = s.tagCollection.CountDocuments(ctx, bson.M{"user_uuid": userUUID})
+	stats.TagsCount, err = s.tagCollection.CountDocuments(ctx, tagScopeFilter(scope))
 	if err != nil {
 		return handlermodel.NoteStats{}, fmt.Errorf("count user tags: %w", err)
 	}
@@ -336,7 +365,7 @@ func (s *Storage) CountStats(userUUID string) (stats handlermodel.NoteStats, err
 	return stats, nil
 }
 
-func (s *Storage) Update(noteUUID, userUUID string, note handlermodel.Note, opts storage.UpdateOptions) (err error) {
+func (s *Storage) Update(noteUUID string, scope storage.Scope, note handlermodel.Note, opts storage.UpdateOptions) (err error) {
 	objectID, err := primitive.ObjectIDFromHex(noteUUID)
 	if err != nil {
 		return apperror.BadRequestError("invalid note uuid")
@@ -355,6 +384,8 @@ func (s *Storage) Update(noteUUID, userUUID string, note handlermodel.Note, opts
 
 	delete(updateBody, "uuid")
 	delete(updateBody, "user_uuid")
+	delete(updateBody, "workspace_id")
+	delete(updateBody, "author_user_uuid")
 	delete(updateBody, "created_date")
 	delete(updateBody, "updated_at")
 
@@ -403,7 +434,9 @@ func (s *Storage) Update(noteUUID, userUUID string, note handlermodel.Note, opts
 	defer cancel()
 
 	var result *mongo.UpdateResult
-	result, err = s.noteCollection.UpdateOne(ctx, bson.M{"_id": objectID, "user_uuid": userUUID}, update)
+	filter := noteAccessFilter(scope)
+	filter["_id"] = objectID
+	result, err = s.noteCollection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return fmt.Errorf("update note: %w", err)
 	}
@@ -427,7 +460,7 @@ func toHandlerEvent(event *mongoNoteEvent) *handlermodel.NoteEvent {
 	}
 }
 
-func (s *Storage) Delete(noteUUID, userUUID string) (err error) {
+func (s *Storage) Delete(noteUUID string, scope storage.Scope) (err error) {
 	objectID, err := primitive.ObjectIDFromHex(noteUUID)
 	if err != nil {
 		return apperror.BadRequestError("invalid note uuid")
@@ -437,7 +470,9 @@ func (s *Storage) Delete(noteUUID, userUUID string) (err error) {
 	defer cancel()
 
 	var result *mongo.DeleteResult
-	result, err = s.noteCollection.DeleteOne(ctx, bson.M{"_id": objectID, "user_uuid": userUUID})
+	filter := noteAccessFilter(scope)
+	filter["_id"] = objectID
+	result, err = s.noteCollection.DeleteOne(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("delete note: %w", err)
 	}
@@ -471,10 +506,10 @@ func (s *Storage) CreateTag(tag tagmodel.Tag) (tagUUID string, err error) {
 	return tagUUID, nil
 }
 
-func (s *Storage) FindTags(tagUUIDs []string, userUUID string) (tags []tagmodel.Tag, err error) {
+func (s *Storage) FindTags(tagUUIDs []string, scope storage.Scope) (tags []tagmodel.Tag, err error) {
 	tags = make([]tagmodel.Tag, 0)
 
-	filter := bson.M{"user_uuid": userUUID}
+	filter := tagScopeFilter(scope)
 	if len(tagUUIDs) > 0 {
 		objectIDs := make([]primitive.ObjectID, 0, len(tagUUIDs))
 		for _, tagUUID := range tagUUIDs {
@@ -504,9 +539,10 @@ func (s *Storage) FindTags(tagUUIDs []string, userUUID string) (tags []tagmodel.
 		}
 
 		tags = append(tags, tagmodel.Tag{
-			Uuid:     rawTag.ID.Hex(),
-			UserUuid: rawTag.UserUuid,
-			Name:     rawTag.Name,
+			Uuid:        rawTag.ID.Hex(),
+			UserUuid:    rawTag.UserUuid,
+			WorkspaceID: rawTag.WorkspaceID,
+			Name:        rawTag.Name,
 		})
 	}
 
@@ -517,7 +553,7 @@ func (s *Storage) FindTags(tagUUIDs []string, userUUID string) (tags []tagmodel.
 	return tags, nil
 }
 
-func (s *Storage) CheckTagsExist(tagUUIDs []string, userUUID string) (err error) {
+func (s *Storage) CheckTagsExist(tagUUIDs []string, scope storage.Scope) (err error) {
 	if len(tagUUIDs) == 0 {
 		return nil
 	}
@@ -541,7 +577,9 @@ func (s *Storage) CheckTagsExist(tagUUIDs []string, userUUID string) (err error)
 	defer cancel()
 
 	var count int64
-	count, err = s.tagCollection.CountDocuments(ctx, bson.M{"_id": bson.M{"$in": objectIDs}, "user_uuid": userUUID})
+	filter := tagScopeFilter(scope)
+	filter["_id"] = bson.M{"$in": objectIDs}
+	count, err = s.tagCollection.CountDocuments(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("count tags: %w", err)
 	}
@@ -553,7 +591,7 @@ func (s *Storage) CheckTagsExist(tagUUIDs []string, userUUID string) (err error)
 	return nil
 }
 
-func (s *Storage) DeleteTag(tagUUID, userUUID string) (err error) {
+func (s *Storage) DeleteTag(tagUUID string, scope storage.Scope) (err error) {
 	objectID, err := primitive.ObjectIDFromHex(tagUUID)
 	if err != nil {
 		return apperror.BadRequestError("invalid tag uuid")
@@ -563,7 +601,9 @@ func (s *Storage) DeleteTag(tagUUID, userUUID string) (err error) {
 	defer cancel()
 
 	var result *mongo.DeleteResult
-	result, err = s.tagCollection.DeleteOne(ctx, bson.M{"_id": objectID, "user_uuid": userUUID})
+	filter := tagScopeFilter(scope)
+	filter["_id"] = objectID
+	result, err = s.tagCollection.DeleteOne(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("delete tag: %w", err)
 	}
@@ -573,7 +613,7 @@ func (s *Storage) DeleteTag(tagUUID, userUUID string) (err error) {
 
 	_, err = s.noteCollection.UpdateMany(
 		ctx,
-		bson.M{"tags": tagUUID, "user_uuid": userUUID},
+		noteScopeWithTagFilter(scope, tagUUID),
 		bson.M{"$pull": bson.M{"tags": tagUUID}},
 	)
 	if err != nil {

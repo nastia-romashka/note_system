@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,13 @@ type UserService interface {
 	CreateSession(ctx context.Context, dto CreateUserSessionDTO) error
 	RotateSession(ctx context.Context, dto RotateUserSessionDTO) (UserSession, error)
 	RevokeSession(ctx context.Context, refreshTokenHash string) error
+	GetWorkspace(ctx context.Context, workspaceUUID string) (Workspace, error)
+	GetWorkspaceMembers(ctx context.Context, workspaceUUID string) ([]WorkspaceMember, error)
+	UpdateWorkspaceMember(ctx context.Context, workspaceUUID, memberUserUUID string, dto UpdateWorkspaceMemberDTO) (WorkspaceMember, error)
+	GetWorkspaceInvites(ctx context.Context, workspaceUUID, userUUID string) ([]WorkspaceInvite, error)
+	CreateWorkspaceInvite(ctx context.Context, workspaceUUID string, dto CreateWorkspaceInviteDTO) (WorkspaceInvite, error)
+	GetPersonalWorkspace(ctx context.Context, userUUID string) (Workspace, error)
+	GetWorkspaceAccess(ctx context.Context, workspaceUUID, userUUID string) (WorkspaceAccess, error)
 }
 
 func (c *client) CreateUser(ctx context.Context, dto CreateUserDTO) (string, error) {
@@ -467,4 +475,330 @@ func (c *client) RevokeSession(ctx context.Context, refreshTokenHash string) err
 		response.Error.Message,
 		response.Error.DeveloperMessage,
 	)
+}
+
+func (c *client) GetWorkspace(ctx context.Context, workspaceUUID string) (workspace Workspace, err error) {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s", workspaceUUID), nil)
+	if err != nil {
+		return workspace, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, uri, nil)
+	if err != nil {
+		return workspace, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return workspace, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return workspace, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &workspace); err != nil {
+			return workspace, fmt.Errorf("failed to unmarshal workspace: %w", err)
+		}
+		return workspace, nil
+	}
+
+	return workspace, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) GetWorkspaceMembers(ctx context.Context, workspaceUUID string) (members []WorkspaceMember, err error) {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s/members", workspaceUUID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, uri, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &members); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal workspace members: %w", err)
+		}
+		return members, nil
+	}
+
+	return nil, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) UpdateWorkspaceMember(
+	ctx context.Context,
+	workspaceUUID,
+	memberUserUUID string,
+	dto UpdateWorkspaceMemberDTO,
+) (member WorkspaceMember, err error) {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s/members/%s", workspaceUUID, memberUserUUID), nil)
+	if err != nil {
+		return member, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(dto)
+	if err != nil {
+		return member, fmt.Errorf("failed to marshal dto: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, uri, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return member, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return member, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return member, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &member); err != nil {
+			return member, fmt.Errorf("failed to unmarshal updated workspace member: %w", err)
+		}
+		return member, nil
+	}
+
+	return member, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) GetWorkspaceInvites(ctx context.Context, workspaceUUID, userUUID string) (invites []WorkspaceInvite, err error) {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s/invites", workspaceUUID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	parsedURL, err := url.Parse(uri)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URL. error: %w", err)
+	}
+	query := parsedURL.Query()
+	query.Set("user_id", userUUID)
+	parsedURL.RawQuery = query.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, parsedURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &invites); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal workspace invites: %w", err)
+		}
+		return invites, nil
+	}
+
+	return nil, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) CreateWorkspaceInvite(ctx context.Context, workspaceUUID string, dto CreateWorkspaceInviteDTO) (invite WorkspaceInvite, err error) {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s/invites", workspaceUUID), nil)
+	if err != nil {
+		return invite, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(dto)
+	if err != nil {
+		return invite, fmt.Errorf("failed to marshal dto: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, uri, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return invite, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return invite, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return invite, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &invite); err != nil {
+			return invite, fmt.Errorf("failed to unmarshal workspace invite: %w", err)
+		}
+		return invite, nil
+	}
+
+	return invite, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) GetPersonalWorkspace(ctx context.Context, userUUID string) (workspace Workspace, err error) {
+	uri, err := c.buildInternalURL(fmt.Sprintf("internal/users/%s/personal-workspace", userUUID))
+	if err != nil {
+		return workspace, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, uri, nil)
+	if err != nil {
+		return workspace, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return workspace, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return workspace, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &workspace); err != nil {
+			return workspace, fmt.Errorf("failed to unmarshal workspace: %w", err)
+		}
+		return workspace, nil
+	}
+
+	return workspace, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) GetWorkspaceAccess(ctx context.Context, workspaceUUID, userUUID string) (access WorkspaceAccess, err error) {
+	uri, err := c.buildInternalURL(fmt.Sprintf("internal/workspaces/%s/access", workspaceUUID))
+	if err != nil {
+		return access, fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	parsedURL, err := url.Parse(uri)
+	if err != nil {
+		return access, fmt.Errorf("failed to parse URL. error: %w", err)
+	}
+	query := parsedURL.Query()
+	query.Set("user_id", userUUID)
+	parsedURL.RawQuery = query.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, parsedURL.String(), nil)
+	if err != nil {
+		return access, fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return access, fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		body, err := response.ReadBody()
+		if err != nil {
+			return access, fmt.Errorf("failed to read body: %w", err)
+		}
+
+		if err = json.Unmarshal(body, &access); err != nil {
+			return access, fmt.Errorf("failed to unmarshal workspace access: %w", err)
+		}
+		return access, nil
+	}
+
+	return access, apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) buildInternalURL(resource string) (string, error) {
+	parsedURL, err := url.ParseRequestURI(c.base.BaseURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse base URL. error: %w", err)
+	}
+
+	basePath := strings.TrimSuffix(strings.TrimSuffix(parsedURL.Path, "/"), "/api")
+	if basePath == "" {
+		basePath = "/"
+	}
+
+	parsedURL.Path = path.Join(basePath, resource)
+	return parsedURL.String(), nil
 }

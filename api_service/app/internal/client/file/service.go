@@ -34,26 +34,20 @@ func NewService(baseURL string, resource string, logger logging.Logger) FileServ
 }
 
 type FileService interface {
-	GetNoteFiles(ctx context.Context, noteUUID, userUUID string) ([]byte, error)
-	GetStats(ctx context.Context, userUUID string) (FileStats, error)
+	GetNoteFiles(ctx context.Context, noteUUID, userUUID, workspaceID string) ([]byte, error)
+	GetStats(ctx context.Context, userUUID, workspaceID string) (FileStats, error)
 	UploadNoteFile(ctx context.Context, params UploadFileParams) ([]byte, string, error)
-	DownloadNoteFile(ctx context.Context, noteUUID, fileID, userUUID string) (*rest.APIResponse, error)
-	DeleteNoteFile(ctx context.Context, noteUUID, fileID, userUUID string) error
+	DownloadNoteFile(ctx context.Context, noteUUID, fileID, userUUID, workspaceID string) (*rest.APIResponse, error)
+	DeleteNoteFile(ctx context.Context, noteUUID, fileID, userUUID, workspaceID string) error
 }
 
-func (c *client) GetNoteFiles(ctx context.Context, noteUUID, userUUID string) ([]byte, error) {
+func (c *client) GetNoteFiles(ctx context.Context, noteUUID, userUUID, workspaceID string) ([]byte, error) {
 	var files []byte
 
-	uri, err := c.base.BuildURL(c.Resource, []rest.FilterOptions{
-		{
-			Field:  "note_uuid",
-			Values: []string{noteUUID},
-		},
-		{
-			Field:  "user_uuid",
-			Values: []string{userUUID},
-		},
-	})
+	uri, err := c.base.BuildURL(c.Resource, append(fileScopeFilters(userUUID, workspaceID), rest.FilterOptions{
+		Field:  "note_uuid",
+		Values: []string{noteUUID},
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build URL: %w", err)
 	}
@@ -88,13 +82,8 @@ func (c *client) GetNoteFiles(ctx context.Context, noteUUID, userUUID string) ([
 	)
 }
 
-func (c *client) GetStats(ctx context.Context, userUUID string) (stats FileStats, err error) {
-	uri, err := c.base.BuildURL("stats", []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUUID},
-		},
-	})
+func (c *client) GetStats(ctx context.Context, userUUID, workspaceID string) (stats FileStats, err error) {
+	uri, err := c.base.BuildURL("stats", fileScopeFilters(userUUID, workspaceID))
 	if err != nil {
 		return stats, fmt.Errorf("failed to build URL: %w", err)
 	}
@@ -180,17 +169,11 @@ func (c *client) UploadNoteFile(ctx context.Context, params UploadFileParams) ([
 	)
 }
 
-func (c *client) DownloadNoteFile(ctx context.Context, noteUUID, fileID, userUUID string) (*rest.APIResponse, error) {
-	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, fileID), []rest.FilterOptions{
-		{
-			Field:  "note_uuid",
-			Values: []string{noteUUID},
-		},
-		{
-			Field:  "user_uuid",
-			Values: []string{userUUID},
-		},
-	})
+func (c *client) DownloadNoteFile(ctx context.Context, noteUUID, fileID, userUUID, workspaceID string) (*rest.APIResponse, error) {
+	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, fileID), append(fileScopeFilters(userUUID, workspaceID), rest.FilterOptions{
+		Field:  "note_uuid",
+		Values: []string{noteUUID},
+	}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build URL: %w", err)
 	}
@@ -218,17 +201,11 @@ func (c *client) DownloadNoteFile(ctx context.Context, noteUUID, fileID, userUUI
 	)
 }
 
-func (c *client) DeleteNoteFile(ctx context.Context, noteUUID, fileID, userUUID string) error {
-	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, fileID), []rest.FilterOptions{
-		{
-			Field:  "note_uuid",
-			Values: []string{noteUUID},
-		},
-		{
-			Field:  "user_uuid",
-			Values: []string{userUUID},
-		},
-	})
+func (c *client) DeleteNoteFile(ctx context.Context, noteUUID, fileID, userUUID, workspaceID string) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, fileID), append(fileScopeFilters(userUUID, workspaceID), rest.FilterOptions{
+		Field:  "note_uuid",
+		Values: []string{noteUUID},
+	}))
 	if err != nil {
 		return fmt.Errorf("failed to build URL: %w", err)
 	}
@@ -265,6 +242,9 @@ func buildMultipartPayload(params UploadFileParams) (io.Reader, string, error) {
 	if strings.TrimSpace(params.UserUUID) == "" {
 		return nil, "", apperror.BadRequestError("empty user uuid")
 	}
+	if strings.TrimSpace(params.WorkspaceID) == "" {
+		return nil, "", apperror.BadRequestError("empty workspace id")
+	}
 	if params.Reader == nil {
 		return nil, "", apperror.BadRequestError("file reader is required")
 	}
@@ -284,6 +264,10 @@ func buildMultipartPayload(params UploadFileParams) (io.Reader, string, error) {
 			_ = pipeWriter.CloseWithError(err)
 			return
 		}
+		if err := writer.WriteField("workspace_id", params.WorkspaceID); err != nil {
+			_ = pipeWriter.CloseWithError(err)
+			return
+		}
 
 		part, err := writer.CreateFormFile("file", params.FileName)
 		if err != nil {
@@ -298,4 +282,21 @@ func buildMultipartPayload(params UploadFileParams) (io.Reader, string, error) {
 	}()
 
 	return pipeReader, writer.FormDataContentType(), nil
+}
+
+func fileScopeFilters(userUUID, workspaceID string) []rest.FilterOptions {
+	filters := []rest.FilterOptions{
+		{
+			Field:  "user_uuid",
+			Values: []string{userUUID},
+		},
+	}
+	if workspaceID != "" {
+		filters = append(filters, rest.FilterOptions{
+			Field:  "workspace_id",
+			Values: []string{workspaceID},
+		})
+	}
+
+	return filters
 }

@@ -36,7 +36,7 @@ func openAPISpec() map[string]any {
 		"openapi": "3.0.3",
 		"info": map[string]any{
 			"title":       "Note Service API",
-			"version":     "1.0.0",
+			"version":     "1.1.0",
 			"description": "Internal API for notes, tags, calendar events, and note statistics.",
 		},
 		"servers": []map[string]string{
@@ -67,6 +67,7 @@ func openAPISpec() map[string]any {
 					"parameters": []map[string]any{
 						queryParam("category_uuid", "string", "Category UUID", true),
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 					},
 					"responses": map[string]any{
 						"200": jsonResponse("Notes", arraySchemaRef("Note")),
@@ -92,6 +93,7 @@ func openAPISpec() map[string]any {
 					"parameters": []map[string]any{
 						pathParam("uuid", "Note UUID"),
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 					},
 					"responses": map[string]any{
 						"200": jsonResponse("Note", schemaRef("Note")),
@@ -106,6 +108,7 @@ func openAPISpec() map[string]any {
 					"parameters": []map[string]any{
 						pathParam("uuid", "Note UUID"),
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 					},
 					"requestBody": jsonBody(schemaRef("UpdateNoteRequest"), true),
 					"responses": map[string]any{
@@ -121,6 +124,7 @@ func openAPISpec() map[string]any {
 					"parameters": []map[string]any{
 						pathParam("uuid", "Note UUID"),
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 					},
 					"responses": map[string]any{
 						"204": noContentResponse("Note deleted"),
@@ -136,6 +140,7 @@ func openAPISpec() map[string]any {
 					"operationId": "getCalendarNotes",
 					"parameters": []map[string]any{
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 						queryParam("from", "integer", "Unix timestamp start", true),
 						queryParam("to", "integer", "Unix timestamp end", true),
 					},
@@ -152,6 +157,7 @@ func openAPISpec() map[string]any {
 					"operationId": "getNoteStats",
 					"parameters": []map[string]any{
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 					},
 					"responses": map[string]any{
 						"200": jsonResponse("Statistics", schemaRef("NoteStats")),
@@ -166,6 +172,7 @@ func openAPISpec() map[string]any {
 					"operationId": "getTags",
 					"parameters": []map[string]any{
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 						queryArrayParam("id", "Repeated tag UUID query parameters"),
 					},
 					"responses": map[string]any{
@@ -192,6 +199,7 @@ func openAPISpec() map[string]any {
 					"parameters": []map[string]any{
 						pathParam("uuid", "Tag UUID"),
 						queryParam("user_uuid", "string", "User UUID", true),
+						queryParam("workspace_id", "string", "Workspace UUID", true),
 					},
 					"responses": map[string]any{
 						"204": noContentResponse("Tag deleted"),
@@ -222,14 +230,16 @@ func openAPISpec() map[string]any {
 				"Note": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"uuid":          map[string]any{"type": "string"},
-						"user_uuid":     map[string]any{"type": "string"},
-						"header":        map[string]any{"type": "string"},
-						"body":          map[string]any{"type": "string"},
-						"short_body":    map[string]any{"type": "string"},
-						"created_date":  map[string]any{"type": "integer", "format": "int64"},
-						"updated_at":    map[string]any{"type": "integer", "format": "int64"},
-						"category_uuid": map[string]any{"type": "string"},
+						"uuid":             map[string]any{"type": "string"},
+						"user_uuid":        map[string]any{"type": "string"},
+						"workspace_id":     map[string]any{"type": "string"},
+						"author_user_uuid": map[string]any{"type": "string"},
+						"header":           map[string]any{"type": "string"},
+						"body":             map[string]any{"type": "string"},
+						"short_body":       map[string]any{"type": "string"},
+						"created_date":     map[string]any{"type": "integer", "format": "int64"},
+						"updated_at":       map[string]any{"type": "integer", "format": "int64"},
+						"category_uuid":    map[string]any{"type": "string"},
 						"tags": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
@@ -239,12 +249,14 @@ func openAPISpec() map[string]any {
 				},
 				"CreateNoteRequest": map[string]any{
 					"type":     "object",
-					"required": []string{"user_uuid", "header", "body", "category_uuid"},
+					"required": []string{"user_uuid", "workspace_id", "header", "body", "category_uuid"},
 					"properties": map[string]any{
-						"user_uuid":     map[string]any{"type": "string"},
-						"header":        map[string]any{"type": "string"},
-						"body":          map[string]any{"type": "string"},
-						"category_uuid": map[string]any{"type": "string"},
+						"user_uuid":        map[string]any{"type": "string"},
+						"workspace_id":     map[string]any{"type": "string"},
+						"author_user_uuid": map[string]any{"type": "string"},
+						"header":           map[string]any{"type": "string"},
+						"body":             map[string]any{"type": "string"},
+						"category_uuid":    map[string]any{"type": "string"},
 						"tags": map[string]any{
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
@@ -257,6 +269,7 @@ func openAPISpec() map[string]any {
 					"properties": map[string]any{
 						"header":        map[string]any{"type": "string"},
 						"body":          map[string]any{"type": "string"},
+						"workspace_id":  map[string]any{"type": "string"},
 						"category_uuid": map[string]any{"type": "string"},
 						"tags": map[string]any{
 							"type":  "array",
@@ -275,17 +288,19 @@ func openAPISpec() map[string]any {
 				"Tag": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"uuid":      map[string]any{"type": "string"},
-						"user_uuid": map[string]any{"type": "string"},
-						"name":      map[string]any{"type": "string"},
+						"uuid":         map[string]any{"type": "string"},
+						"user_uuid":    map[string]any{"type": "string"},
+						"workspace_id": map[string]any{"type": "string"},
+						"name":         map[string]any{"type": "string"},
 					},
 				},
 				"CreateTagRequest": map[string]any{
 					"type":     "object",
-					"required": []string{"user_uuid", "name"},
+					"required": []string{"user_uuid", "workspace_id", "name"},
 					"properties": map[string]any{
-						"user_uuid": map[string]any{"type": "string"},
-						"name":      map[string]any{"type": "string"},
+						"user_uuid":    map[string]any{"type": "string"},
+						"workspace_id": map[string]any{"type": "string"},
+						"name":         map[string]any{"type": "string"},
 					},
 				},
 			},

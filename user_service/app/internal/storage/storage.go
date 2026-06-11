@@ -14,6 +14,18 @@ type Storage interface {
 	CreateSession(dto handlermodel.CreateUserSessionDTO) error
 	RotateSession(dto handlermodel.RotateUserSessionDTO) (handlermodel.UserSession, error)
 	RevokeSession(refreshTokenHash string) error
+	FindWorkspacesByUser(userUUID string) ([]handlermodel.Workspace, error)
+	FindWorkspaceByID(workspaceUUID string) (handlermodel.Workspace, error)
+	FindPersonalWorkspace(userUUID string) (handlermodel.Workspace, error)
+	CreateWorkspace(dto handlermodel.CreateWorkspaceDTO) (handlermodel.Workspace, error)
+	FindWorkspaceMembers(workspaceUUID string) ([]handlermodel.WorkspaceMember, error)
+	UpdateWorkspaceMember(workspaceUUID, memberUserUUID string, dto handlermodel.UpdateWorkspaceMemberDTO) (handlermodel.WorkspaceMember, error)
+	FindWorkspaceInvitesByUser(userUUID string) ([]handlermodel.WorkspaceInvite, error)
+	FindWorkspaceInvitesByWorkspace(workspaceUUID, actorUserUUID string) ([]handlermodel.WorkspaceInvite, error)
+	CreateWorkspaceInvite(workspaceUUID string, dto handlermodel.CreateWorkspaceInviteDTO) (handlermodel.WorkspaceInvite, error)
+	AcceptWorkspaceInvite(inviteUUID, userUUID string) (handlermodel.Workspace, error)
+	DeclineWorkspaceInvite(inviteUUID, userUUID string) error
+	FindWorkspaceAccess(workspaceUUID, userUUID string) (handlermodel.WorkspaceAccess, error)
 	Ping() error
 	Close()
 }

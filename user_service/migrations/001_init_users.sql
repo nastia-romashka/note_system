@@ -147,11 +147,15 @@ CREATE TABLE IF NOT EXISTS workspace_invites (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     email TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer',
     invited_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash TEXT NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     accepted_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    declined_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT workspace_invites_role_check
+        CHECK (role IN ('viewer', 'editor'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_created_at
@@ -175,6 +179,10 @@ CREATE INDEX IF NOT EXISTS idx_user_tokens_expires_at
 CREATE INDEX IF NOT EXISTS idx_workspaces_owner_user_id
     ON workspaces (owner_user_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_owner_private
+    ON workspaces (owner_user_id)
+    WHERE visibility = 'private';
+
 CREATE INDEX IF NOT EXISTS idx_workspace_members_user_id
     ON workspace_members (user_id);
 
@@ -183,6 +191,9 @@ CREATE INDEX IF NOT EXISTS idx_workspace_invites_workspace_id
 
 CREATE INDEX IF NOT EXISTS idx_workspace_invites_email
     ON workspace_invites (email);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_invites_email_lower
+    ON workspace_invites (lower(email));
 
 DO $$
 BEGIN

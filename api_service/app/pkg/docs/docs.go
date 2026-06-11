@@ -479,6 +479,84 @@ func openAPISpec() map[string]any {
 					},
 				},
 			},
+			"/api/workspaces/{uuid}": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Get shared workspace overview",
+					"operationId": "getWorkspaceOverview",
+					"security":    bearerSecurity,
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace overview", schemaRef("WorkspaceOverview")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}/members": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "List workspace members",
+					"operationId": "getWorkspaceMembers",
+					"security":    bearerSecurity,
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace members", arraySchemaRef("WorkspaceMember")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}/members/{member_uuid}": map[string]any{
+				"patch": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Update workspace member role or status",
+					"operationId": "updateWorkspaceMember",
+					"security":    bearerSecurity,
+					"parameters": []map[string]any{
+						pathParam("uuid", "Workspace UUID"),
+						pathParam("member_uuid", "Member user UUID"),
+					},
+					"requestBody": jsonBody(schemaRef("UpdateWorkspaceMemberRequest"), true),
+					"responses": map[string]any{
+						"200": jsonResponse("Updated workspace member", schemaRef("WorkspaceMember")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}/invites": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "List sent workspace invites",
+					"operationId": "getWorkspaceInvites",
+					"security":    bearerSecurity,
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"responses": map[string]any{
+						"200": jsonResponse("Workspace invites", arraySchemaRef("WorkspaceInvite")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+				"post": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Create workspace invite",
+					"operationId": "createWorkspaceInvite",
+					"security":    bearerSecurity,
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"requestBody": jsonBody(schemaRef("CreateWorkspaceInviteRequest"), true),
+					"responses": map[string]any{
+						"201": jsonResponse("Workspace invite", schemaRef("WorkspaceInvite")),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
 			"/api/graph": map[string]any{
 				"get": map[string]any{
 					"tags":        []string{"graph"},
@@ -762,6 +840,86 @@ func openAPISpec() map[string]any {
 						"profile":         schemaRef("UserProfile"),
 						"stats":           schemaRef("SummaryStats"),
 						"upcoming_events": arraySchemaRef("Note"),
+					},
+				},
+				"Workspace": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"uuid":            map[string]any{"type": "string"},
+						"name":            map[string]any{"type": "string"},
+						"owner_user_uuid": map[string]any{"type": "string"},
+						"visibility":      map[string]any{"type": "string", "enum": []string{"private", "invite_only"}},
+						"is_personal":     map[string]any{"type": "boolean"},
+						"created_at":      map[string]any{"type": "integer", "format": "int64"},
+						"updated_at":      map[string]any{"type": "integer", "format": "int64"},
+					},
+				},
+				"WorkspaceMember": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workspace_uuid": map[string]any{"type": "string"},
+						"user_uuid":      map[string]any{"type": "string"},
+						"username":       map[string]any{"type": "string"},
+						"email":          map[string]any{"type": "string", "format": "email"},
+						"role":           map[string]any{"type": "string", "enum": []string{"owner", "editor", "viewer"}},
+						"status":         map[string]any{"type": "string", "enum": []string{"active", "pending", "removed"}},
+						"joined_at":      map[string]any{"type": "integer", "format": "int64", "nullable": true},
+						"invited_by":     map[string]any{"type": "string", "nullable": true},
+					},
+				},
+				"WorkspaceInvite": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"uuid":                 map[string]any{"type": "string"},
+						"workspace_uuid":       map[string]any{"type": "string"},
+						"workspace_name":       map[string]any{"type": "string"},
+						"email":                map[string]any{"type": "string", "format": "email"},
+						"role":                 map[string]any{"type": "string", "enum": []string{"viewer", "editor"}},
+						"invited_by_user_uuid": map[string]any{"type": "string"},
+						"invited_by_username":  map[string]any{"type": "string"},
+						"expires_at":           map[string]any{"type": "integer", "format": "int64"},
+						"accepted_at":          map[string]any{"type": "integer", "format": "int64", "nullable": true},
+						"declined_at":          map[string]any{"type": "integer", "format": "int64", "nullable": true},
+						"created_at":           map[string]any{"type": "integer", "format": "int64"},
+						"status":               map[string]any{"type": "string", "enum": []string{"pending", "accepted", "declined", "expired"}},
+					},
+				},
+				"WorkspaceOverviewStats": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"categories_count": map[string]any{"type": "integer", "format": "int64"},
+						"notes_count":      map[string]any{"type": "integer", "format": "int64"},
+						"tags_count":       map[string]any{"type": "integer", "format": "int64"},
+						"files_count":      map[string]any{"type": "integer", "format": "int64"},
+						"last_activity_at": map[string]any{"type": "integer", "format": "int64", "nullable": true},
+					},
+				},
+				"WorkspaceOverview": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"workspace":       schemaRef("Workspace"),
+						"role":            map[string]any{"type": "string", "enum": []string{"owner", "editor", "viewer"}},
+						"status":          map[string]any{"type": "string"},
+						"can_invite":      map[string]any{"type": "boolean"},
+						"members_count":   map[string]any{"type": "integer"},
+						"stats":           schemaRef("WorkspaceOverviewStats"),
+						"upcoming_events": arraySchemaRef("Note"),
+					},
+				},
+				"CreateWorkspaceInviteRequest": map[string]any{
+					"type":     "object",
+					"required": []string{"email"},
+					"properties": map[string]any{
+						"email":      map[string]any{"type": "string", "format": "email"},
+						"role":       map[string]any{"type": "string", "enum": []string{"viewer", "editor"}},
+						"expires_at": map[string]any{"type": "integer", "format": "int64"},
+					},
+				},
+				"UpdateWorkspaceMemberRequest": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"role":   map[string]any{"type": "string", "enum": []string{"viewer", "editor"}},
+						"status": map[string]any{"type": "string", "enum": []string{"active", "removed"}},
 					},
 				},
 				"GraphNode": map[string]any{

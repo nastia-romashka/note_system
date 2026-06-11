@@ -30,11 +30,11 @@ def get_category_service(request: Request) -> CategoryService:
 )
 async def get_categories(
     request: Request,
-    user_uuid: str = Query(...),
+    workspace_id: str = Query(...),
     service: CategoryService = Depends(get_category_service),
 ) -> list[Category]:
-    request.app.state.logger.debug("get categories for user_uuid=%s", user_uuid)
-    return service.get_categories(user_uuid=user_uuid)
+    request.app.state.logger.debug("get categories for workspace_id=%s", workspace_id)
+    return service.get_categories(workspace_id=workspace_id)
 
 
 @router.get(
@@ -44,11 +44,11 @@ async def get_categories(
 )
 async def get_stats(
     request: Request,
-    user_uuid: str = Query(...),
+    workspace_id: str = Query(...),
     service: CategoryService = Depends(get_category_service),
 ) -> CategoryStats:
-    request.app.state.logger.debug("get category stats for user_uuid=%s", user_uuid)
-    return service.get_stats(user_uuid=user_uuid)
+    request.app.state.logger.debug("get category stats for workspace_id=%s", workspace_id)
+    return service.get_stats(workspace_id=workspace_id)
 
 
 @router.get(
@@ -58,11 +58,11 @@ async def get_stats(
 )
 async def get_graph(
     request: Request,
-    user_uuid: str = Query(...),
+    workspace_id: str = Query(...),
     service: CategoryService = Depends(get_category_service),
 ) -> GraphData:
-    request.app.state.logger.debug("get graph for user_uuid=%s", user_uuid)
-    return service.get_user_graph(user_uuid=user_uuid)
+    request.app.state.logger.debug("get graph for workspace_id=%s", workspace_id)
+    return service.get_workspace_graph(workspace_id=workspace_id)
 
 
 @router.post(
@@ -104,7 +104,7 @@ async def delete_note_node(
     note_dto: DeleteGraphNoteDTO,
     service: CategoryService = Depends(get_category_service),
 ) -> Response:
-    service.delete_note_node(note_uuid=note_uuid, user_uuid=note_dto.user_uuid)
+    service.delete_note_node(note_uuid=note_uuid, workspace_id=note_dto.workspace_id)
     request.app.state.logger.debug("deleted graph note uuid=%s", note_uuid)
     return Response(status_code=HTTPStatus.NO_CONTENT)
 

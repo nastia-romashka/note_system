@@ -5,8 +5,9 @@ from dao.model.base import Base
 
 class Category(Base):
     uuid: str
+    workspace_id: str
+    author_user_uuid: str | None = None
     name: str
-    user_uuid: str | None = None
     color: str | None = None
     created_at: int | None = None
     parent_uuid: str | None = None
@@ -19,16 +20,19 @@ class CategoryStats(Base):
 
 class GraphNote(Base):
     uuid: str
-    user_uuid: str
+    workspace_id: str
+    author_user_uuid: str | None = None
     category_uuid: str
     header: str
-    created_date: int | None = None
+    created_at: int | None = None
 
 
 class GraphNode(Base):
     id: str
     type: str
     label: str
+    workspace_id: str | None = None
+    author_user_uuid: str | None = None
     color: str | None = None
     category_uuid: str | None = None
     created_at: int | None = None

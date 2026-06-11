@@ -1,8 +1,11 @@
 import { CalendarCreateDialog } from "../NotesPage/Dialogs";
+import WorkspaceContextMenu from "../../components/WorkspaceContextMenu";
 
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 export default function CalendarPage({
+  currentWorkspace,
+  workspaces,
   currentMonth,
   selectedDay,
   notesByDay,
@@ -20,9 +23,17 @@ export default function CalendarPage({
   onOpenGraph,
   onOpenNotes,
   onOpenProfile,
+  onSelectPersonalWorkspace,
+  onSelectWorkspace,
+  onCreateWorkspace,
 }) {
   const monthDays = buildCalendarDays(currentMonth);
   const categoryNames = buildCategoryNameMap(categories);
+  const isWorkspaceMode = Boolean(currentWorkspace);
+  const pageTitle = isWorkspaceMode
+    ? `${currentWorkspace.name}: Календарь`
+    : "Календарь";
+  const contextButtonLabel = isWorkspaceMode ? "Настройки пространства" : "Личный кабинет";
   const selectedLabel = selectedDay.toLocaleDateString("ru-RU", {
     day: "numeric",
     month: "long",
@@ -31,12 +42,22 @@ export default function CalendarPage({
 
   return (
     <main className="calendar-page">
-      <header className="calendar-header">
-        <div>
-          <div className="eyebrow">Планирование</div>
-          <h1>{currentMonth.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</h1>
+      <header className="profile-header page-header">
+        <div className="page-header-copy">
+          <div className="page-header-leading">
+            <WorkspaceContextMenu
+              currentWorkspace={currentWorkspace}
+              workspaces={workspaces}
+              onSelectPersonalWorkspace={onSelectPersonalWorkspace}
+              onSelectWorkspace={onSelectWorkspace}
+              onCreateWorkspace={onCreateWorkspace}
+            />
+            <span className="eyebrow">{isWorkspaceMode ? "Общий режим" : "Личный режим"}</span>
+          </div>
+          <h1>{pageTitle}</h1>
+          <p>{currentMonth.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}</p>
         </div>
-        <div className="calendar-actions">
+        <div className="profile-actions page-header-actions">
           <button className="secondary-button" type="button" onClick={onOpenGraph}>
             Граф
           </button>
@@ -44,7 +65,7 @@ export default function CalendarPage({
             Заметки
           </button>
           <button className="secondary-button" type="button" onClick={onOpenProfile}>
-            Личный кабинет
+            {contextButtonLabel}
           </button>
         </div>
       </header>

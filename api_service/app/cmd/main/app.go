@@ -17,6 +17,7 @@ import (
 	"myproject/internal/handlers/profile"
 	searchhandler "myproject/internal/handlers/search"
 	"myproject/internal/handlers/tags"
+	"myproject/internal/handlers/workspaces"
 
 	"myproject/internal/config"
 	"myproject/pkg/docs"
@@ -83,6 +84,7 @@ func main() {
 		cfg.NoteService.URL,
 		cfg.UserService.URL,
 		cfg.SearchService.URL,
+		userService,
 	)
 	passthroughHandler.Register(router)
 	profileHandler := profile.Handler{
@@ -104,48 +106,65 @@ func main() {
 
 	profileHandler.NoteService = noteService
 	categoriesHandler := categories.Handler{
-		Logger:          logger,
-		CategoryService: categoryService,
-		FileService:     fileService,
-		NoteService:     noteService,
-		SearchService:   searchService,
-		ActionRecorder:  actionRecorder,
+		Logger:           logger,
+		CategoryService:  categoryService,
+		FileService:      fileService,
+		NoteService:      noteService,
+		SearchService:    searchService,
+		WorkspaceService: userService,
+		ActionRecorder:   actionRecorder,
 	}
 	categoriesHandler.Register(router)
 
 	notesHandler := notes.Handler{
-		Logger:          logger,
-		CategoryService: categoryService,
-		FileService:     fileService,
-		NoteService:     noteService,
-		SearchService:   searchService,
-		ActionRecorder:  actionRecorder,
+		Logger:           logger,
+		CategoryService:  categoryService,
+		FileService:      fileService,
+		NoteService:      noteService,
+		SearchService:    searchService,
+		WorkspaceService: userService,
+		ActionRecorder:   actionRecorder,
 	}
 	notesHandler.Register(router)
 
 	tagsHandler := tags.Handler{
-		Logger:         logger,
-		NoteService:    noteService,
-		ActionRecorder: actionRecorder,
+		Logger:           logger,
+		NoteService:      noteService,
+		WorkspaceService: userService,
+		ActionRecorder:   actionRecorder,
 	}
 	tagsHandler.Register(router)
 
 	profileHandler.FileService = fileService
 	profileHandler.Register(router)
 
+	workspacesHandler := workspaces.Handler{
+		Logger:          logger,
+		UserService:     userService,
+		CategoryService: categoryService,
+		NoteService:     noteService,
+		FileService:     fileService,
+	}
+	workspacesHandler.Register(router)
+
 	filesHandler := files.Handler{
-		Logger:         logger,
-		NoteService:    noteService,
-		FileService:    fileService,
-		ActionRecorder: actionRecorder,
+		Logger:           logger,
+		CategoryService:  categoryService,
+		NoteService:      noteService,
+		FileService:      fileService,
+		SearchService:    searchService,
+		WorkspaceService: userService,
+		ActionRecorder:   actionRecorder,
 	}
 	filesHandler.Register(router)
 
 	searchNotesHandler := searchhandler.Handler{
-		Logger:          logger,
-		SearchService:   searchService,
-		CategoryService: categoryService,
-		NoteService:     noteService,
+		Logger:           logger,
+		SearchService:    searchService,
+		CategoryService:  categoryService,
+		FileService:      fileService,
+		NoteService:      noteService,
+		WorkspaceService: userService,
 	}
 	searchNotesHandler.Register(router)
 

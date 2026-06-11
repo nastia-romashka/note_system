@@ -68,6 +68,10 @@ go.work.sum
 .gocache-test/
 .gocache-local/
 .gocache-api/
+.gocache-user/
+.gocache-note/
+.gocache-file/
+.gocache-search/
 
 # Local temporary workspace artifacts
 .tmp/

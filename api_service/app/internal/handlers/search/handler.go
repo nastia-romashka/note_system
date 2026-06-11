@@ -7,11 +7,15 @@ import (
 
 	"myproject/internal/apperror"
 	categoryclient "myproject/internal/client/category"
+	fileclient "myproject/internal/client/file"
 	noteclient "myproject/internal/client/note"
 	searchclient "myproject/internal/client/search"
+	userclient "myproject/internal/client/user"
+	"myproject/internal/requestctx"
 	"myproject/internal/searchsync"
 	"myproject/pkg/logging"
 	"myproject/pkg/middleware/jwt"
+	workspacemw "myproject/pkg/middleware/workspace"
 )
 
 const (
@@ -19,10 +23,12 @@ const (
 )
 
 type Handler struct {
-	Logger          logging.Logger
-	SearchService   searchclient.SearchService
-	CategoryService categoryclient.CategoryService
-	NoteService     noteclient.NoteService
+	Logger           logging.Logger
+	SearchService    searchclient.SearchService
+	CategoryService  categoryclient.CategoryService
+	FileService      fileclient.FileService
+	NoteService      noteclient.NoteService
+	WorkspaceService userclient.UserService
 }
 
 type reindexResponse struct {
@@ -32,7 +38,7 @@ type reindexResponse struct {
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc(http.MethodPost+" "+searchReindexURL, jwt.JWTMiddleware(apperror.Middleware(h.ReindexNotes)))
+	mux.HandleFunc(http.MethodPost+" "+searchReindexURL, jwt.JWTMiddleware(workspacemw.Middleware(h.WorkspaceService, apperror.Middleware(h.ReindexNotes))))
 }
 
 func (h *Handler) ReindexNotes(w http.ResponseWriter, r *http.Request) error {
@@ -40,29 +46,37 @@ func (h *Handler) ReindexNotes(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-
-	categories, categoryUUIDs, err := h.fetchCategories(r, userUUID)
+	workspaceID, err := h.workspaceIDFromContext(r)
 	if err != nil {
 		return err
 	}
 
-	notes, err := h.fetchNotesByCategories(r, userUUID, categoryUUIDs)
+	categories, categoryUUIDs, err := h.fetchCategories(r, workspaceID)
 	if err != nil {
 		return err
 	}
 
-	tags, err := h.fetchTagsForNotes(r, userUUID, notes)
+	notes, err := h.fetchNotesByCategories(r, userUUID, workspaceID, categoryUUIDs)
 	if err != nil {
 		return err
 	}
 
-	documents, err := searchsync.BuildIndexedNotes(notes, categories, tags)
+	tags, err := h.fetchTagsForNotes(r, userUUID, workspaceID, notes)
+	if err != nil {
+		return err
+	}
+	filesByNote, err := h.fetchFilesByNotes(r, userUUID, workspaceID, notes)
+	if err != nil {
+		return err
+	}
+
+	documents, err := searchsync.BuildIndexedNotes(notes, categories, tags, filesByNote)
 	if err != nil {
 		h.Logger.Error("failed to build indexed notes for full reindex", "user_uuid", userUUID, "error", err)
 		return fmt.Errorf("build indexed notes for reindex: %w", err)
 	}
 
-	if err = h.SearchService.DeleteNotesByUser(r.Context(), userUUID); err != nil {
+	if err = h.SearchService.DeleteNotesByWorkspace(r.Context(), workspaceID); err != nil {
 		h.Logger.Error("failed to clear search index before reindex", "user_uuid", userUUID, "error", err)
 		return fmt.Errorf("clear search index before reindex: %w", err)
 	}
@@ -106,8 +120,8 @@ func (h *Handler) userUUIDFromContext(r *http.Request) (string, error) {
 	return userUUID, nil
 }
 
-func (h *Handler) fetchCategories(r *http.Request, userUUID string) ([]categoryclient.Category, []string, error) {
-	categoriesData, err := h.CategoryService.GetUserCategories(r.Context(), userUUID)
+func (h *Handler) fetchCategories(r *http.Request, workspaceID string) ([]categoryclient.Category, []string, error) {
+	categoriesData, err := h.CategoryService.GetWorkspaceCategories(r.Context(), workspaceID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -120,11 +134,11 @@ func (h *Handler) fetchCategories(r *http.Request, userUUID string) ([]categoryc
 	return categories, flattenCategoryUUIDs(categories), nil
 }
 
-func (h *Handler) fetchNotesByCategories(r *http.Request, userUUID string, categoryUUIDs []string) ([]noteclient.Note, error) {
+func (h *Handler) fetchNotesByCategories(r *http.Request, userUUID, workspaceID string, categoryUUIDs []string) ([]noteclient.Note, error) {
 	notesByID := make(map[string]noteclient.Note)
 
 	for _, categoryUUID := range categoryUUIDs {
-		notesData, err := h.NoteService.GetNotesByCategory(r.Context(), categoryUUID, userUUID)
+		notesData, err := h.NoteService.GetNotesByCategory(r.Context(), categoryUUID, userUUID, workspaceID)
 		if err != nil {
 			return nil, fmt.Errorf("fetch notes for category %s: %w", categoryUUID, err)
 		}
@@ -147,13 +161,13 @@ func (h *Handler) fetchNotesByCategories(r *http.Request, userUUID string, categ
 	return result, nil
 }
 
-func (h *Handler) fetchTagsForNotes(r *http.Request, userUUID string, notes []noteclient.Note) ([]noteclient.Tag, error) {
+func (h *Handler) fetchTagsForNotes(r *http.Request, userUUID, workspaceID string, notes []noteclient.Note) ([]noteclient.Tag, error) {
 	tagUUIDs := searchsync.CollectTagUUIDs(notes)
 	if len(tagUUIDs) == 0 {
 		return nil, nil
 	}
 
-	tagsData, err := h.NoteService.GetTags(r.Context(), tagUUIDs, userUUID)
+	tagsData, err := h.NoteService.GetTags(r.Context(), tagUUIDs, userUUID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +180,26 @@ func (h *Handler) fetchTagsForNotes(r *http.Request, userUUID string, notes []no
 	return tags, nil
 }
 
+func (h *Handler) fetchFilesByNotes(r *http.Request, userUUID, workspaceID string, notes []noteclient.Note) (map[string][]fileclient.FileInfo, error) {
+	filesByNote := make(map[string][]fileclient.FileInfo, len(notes))
+
+	for _, note := range notes {
+		filesData, err := h.FileService.GetNoteFiles(r.Context(), note.Uuid, userUUID, workspaceID)
+		if err != nil {
+			return nil, fmt.Errorf("fetch files for note %s: %w", note.Uuid, err)
+		}
+
+		var files []fileclient.FileInfo
+		if err = json.Unmarshal(filesData, &files); err != nil {
+			return nil, fmt.Errorf("decode files response for note %s: %w", note.Uuid, err)
+		}
+
+		filesByNote[note.Uuid] = files
+	}
+
+	return filesByNote, nil
+}
+
 func flattenCategoryUUIDs(categories []categoryclient.Category) []string {
 	result := make([]string, 0)
 	for _, category := range categories {
@@ -174,4 +208,8 @@ func flattenCategoryUUIDs(categories []categoryclient.Category) []string {
 	}
 
 	return result
+}
+
+func (h *Handler) workspaceIDFromContext(r *http.Request) (string, error) {
+	return requestctx.WorkspaceID(r)
 }

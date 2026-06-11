@@ -33,31 +33,25 @@ func NewService(baseURL string, resource string, logger logging.Logger) NoteServ
 }
 
 type NoteService interface {
-	GetNotesByCategory(ctx context.Context, categoryUuid, userUuid string) ([]byte, error)
-	GetCalendarNotes(ctx context.Context, from, to int64, userUuid string) ([]byte, error)
-	GetNote(ctx context.Context, uuid, userUuid string) ([]byte, error)
-	GetStats(ctx context.Context, userUuid string) (NoteStats, error)
+	GetNotesByCategory(ctx context.Context, categoryUuid, userUuid, workspaceID string) ([]byte, error)
+	GetCalendarNotes(ctx context.Context, from, to int64, userUuid, workspaceID string) ([]byte, error)
+	GetNote(ctx context.Context, uuid, userUuid, workspaceID string) ([]byte, error)
+	GetStats(ctx context.Context, userUuid, workspaceID string) (NoteStats, error)
 	CreateNote(ctx context.Context, dto CreateNoteDTO) (string, error)
-	UpdateNote(ctx context.Context, uuid, userUuid string, dto UpdateNoteDTO) error
-	DeleteNote(ctx context.Context, uuid, userUuid string) error
-	GetTags(ctx context.Context, tagUUIDs []string, userUuid string) ([]byte, error)
+	UpdateNote(ctx context.Context, uuid, userUuid, workspaceID string, dto UpdateNoteDTO) error
+	DeleteNote(ctx context.Context, uuid, userUuid, workspaceID string) error
+	GetTags(ctx context.Context, tagUUIDs []string, userUuid, workspaceID string) ([]byte, error)
 	CreateTag(ctx context.Context, dto CreateTagDTO) (string, error)
-	DeleteTag(ctx context.Context, uuid, userUuid string) error
+	DeleteTag(ctx context.Context, uuid, userUuid, workspaceID string) error
 }
 
-func (c *client) GetNotesByCategory(ctx context.Context, categoryUuid, userUuid string) ([]byte, error) {
+func (c *client) GetNotesByCategory(ctx context.Context, categoryUuid, userUuid, workspaceID string) ([]byte, error) {
 	var notes []byte
 
-	filters := []rest.FilterOptions{
-		{
-			Field:  "category_uuid",
-			Values: []string{categoryUuid},
-		},
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-	}
+	filters := append(scopeFilters(userUuid, workspaceID), rest.FilterOptions{
+		Field:  "category_uuid",
+		Values: []string{categoryUuid},
+	})
 
 	uri, err := c.base.BuildURL(c.Resource, filters)
 	if err != nil {
@@ -94,15 +88,10 @@ func (c *client) GetNotesByCategory(ctx context.Context, categoryUuid, userUuid 
 	)
 }
 
-func (c *client) GetNote(ctx context.Context, uuid, userUuid string) ([]byte, error) {
+func (c *client) GetNote(ctx context.Context, uuid, userUuid, workspaceID string) ([]byte, error) {
 	var note []byte
 
-	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, uuid), []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-	})
+	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, uuid), scopeFilters(userUuid, workspaceID))
 	if err != nil {
 		return note, fmt.Errorf("failed to build URL. error: %w", err)
 	}
@@ -137,23 +126,19 @@ func (c *client) GetNote(ctx context.Context, uuid, userUuid string) ([]byte, er
 	)
 }
 
-func (c *client) GetCalendarNotes(ctx context.Context, from, to int64, userUuid string) ([]byte, error) {
+func (c *client) GetCalendarNotes(ctx context.Context, from, to int64, userUuid, workspaceID string) ([]byte, error) {
 	var notes []byte
 
-	filters := []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-		{
+	filters := append(scopeFilters(userUuid, workspaceID),
+		rest.FilterOptions{
 			Field:  "from",
 			Values: []string{fmt.Sprintf("%d", from)},
 		},
-		{
+		rest.FilterOptions{
 			Field:  "to",
 			Values: []string{fmt.Sprintf("%d", to)},
 		},
-	}
+	)
 
 	uri, err := c.base.BuildURL("calendar", filters)
 	if err != nil {
@@ -190,13 +175,8 @@ func (c *client) GetCalendarNotes(ctx context.Context, from, to int64, userUuid 
 	)
 }
 
-func (c *client) GetStats(ctx context.Context, userUuid string) (stats NoteStats, err error) {
-	uri, err := c.base.BuildURL("stats", []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-	})
+func (c *client) GetStats(ctx context.Context, userUuid, workspaceID string) (stats NoteStats, err error) {
+	uri, err := c.base.BuildURL("stats", scopeFilters(userUuid, workspaceID))
 	if err != nil {
 		return stats, fmt.Errorf("failed to build URL. error: %w", err)
 	}
@@ -280,13 +260,8 @@ func (c *client) CreateNote(ctx context.Context, dto CreateNoteDTO) (string, err
 	)
 }
 
-func (c *client) UpdateNote(ctx context.Context, uuid, userUuid string, dto UpdateNoteDTO) error {
-	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, uuid), []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-	})
+func (c *client) UpdateNote(ctx context.Context, uuid, userUuid, workspaceID string, dto UpdateNoteDTO) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, uuid), scopeFilters(userUuid, workspaceID))
 	if err != nil {
 		return fmt.Errorf("failed to build URL. error: %w", err)
 	}
@@ -322,13 +297,8 @@ func (c *client) UpdateNote(ctx context.Context, uuid, userUuid string, dto Upda
 	)
 }
 
-func (c *client) DeleteNote(ctx context.Context, uuid, userUuid string) error {
-	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, uuid), []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-	})
+func (c *client) DeleteNote(ctx context.Context, uuid, userUuid, workspaceID string) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("%s/%s", c.Resource, uuid), scopeFilters(userUuid, workspaceID))
 	if err != nil {
 		return fmt.Errorf("failed to build URL. error: %w", err)
 	}
@@ -359,15 +329,10 @@ func (c *client) DeleteNote(ctx context.Context, uuid, userUuid string) error {
 	)
 }
 
-func (c *client) GetTags(ctx context.Context, tagUUIDs []string, userUuid string) ([]byte, error) {
+func (c *client) GetTags(ctx context.Context, tagUUIDs []string, userUuid, workspaceID string) ([]byte, error) {
 	var tags []byte
 
-	filters := []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-	}
+	filters := scopeFilters(userUuid, workspaceID)
 	if len(tagUUIDs) > 0 {
 		filters = append(filters,
 			rest.FilterOptions{
@@ -458,13 +423,8 @@ func (c *client) CreateTag(ctx context.Context, dto CreateTagDTO) (string, error
 	)
 }
 
-func (c *client) DeleteTag(ctx context.Context, uuid, userUuid string) error {
-	uri, err := c.base.BuildURL(fmt.Sprintf("tags/%s", uuid), []rest.FilterOptions{
-		{
-			Field:  "user_uuid",
-			Values: []string{userUuid},
-		},
-	})
+func (c *client) DeleteTag(ctx context.Context, uuid, userUuid, workspaceID string) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("tags/%s", uuid), scopeFilters(userUuid, workspaceID))
 	if err != nil {
 		return fmt.Errorf("failed to build URL. error: %w", err)
 	}
@@ -493,4 +453,21 @@ func (c *client) DeleteTag(ctx context.Context, uuid, userUuid string) error {
 		response.Error.Message,
 		response.Error.DeveloperMessage,
 	)
+}
+
+func scopeFilters(userUuid, workspaceID string) []rest.FilterOptions {
+	filters := []rest.FilterOptions{
+		{
+			Field:  "user_uuid",
+			Values: []string{userUuid},
+		},
+	}
+	if workspaceID != "" {
+		filters = append(filters, rest.FilterOptions{
+			Field:  "workspace_id",
+			Values: []string{workspaceID},
+		})
+	}
+
+	return filters
 }

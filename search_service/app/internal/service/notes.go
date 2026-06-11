@@ -9,11 +9,11 @@ import (
 )
 
 type NotesRepository interface {
-	Search(q, userUUID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]handlermodel.SearchNote, error)
+	Search(q, workspaceID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]handlermodel.SearchNote, error)
 	Upsert(note handlermodel.IndexedNote) error
 	UpsertMany(notes []handlermodel.IndexedNote) error
-	Delete(noteUUID, userUUID string) error
-	DeleteByUser(userUUID string) error
+	Delete(noteUUID string) error
+	DeleteByWorkspace(workspaceID string) error
 }
 
 type NotesService struct {
@@ -24,12 +24,12 @@ func NewNotesService(repo NotesRepository) *NotesService {
 	return &NotesService{repo: repo}
 }
 
-func (s *NotesService) Search(q, userUUID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]handlermodel.SearchNote, error) {
-	if strings.TrimSpace(userUUID) == "" {
-		return nil, apperror.BadRequestError("user_uuid is required")
+func (s *NotesService) Search(q, workspaceID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]handlermodel.SearchNote, error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, apperror.BadRequestError("workspace_id is required")
 	}
 
-	notes, err := s.repo.Search(strings.TrimSpace(q), userUUID, strings.TrimSpace(categoryUUID), tagUUIDs, page, perPage)
+	notes, err := s.repo.Search(strings.TrimSpace(q), workspaceID, strings.TrimSpace(categoryUUID), tagUUIDs, page, perPage)
 	if err != nil {
 		return nil, fmt.Errorf("search notes: %w", err)
 	}
@@ -67,28 +67,25 @@ func (s *NotesService) UpsertMany(notes []handlermodel.IndexedNote) error {
 	return nil
 }
 
-func (s *NotesService) Delete(noteUUID, userUUID string) error {
+func (s *NotesService) Delete(noteUUID string) error {
 	if strings.TrimSpace(noteUUID) == "" {
 		return apperror.BadRequestError("note id is required")
 	}
-	if strings.TrimSpace(userUUID) == "" {
-		return apperror.BadRequestError("user_uuid is required")
-	}
 
-	if err := s.repo.Delete(noteUUID, userUUID); err != nil {
+	if err := s.repo.Delete(noteUUID); err != nil {
 		return fmt.Errorf("delete indexed note: %w", err)
 	}
 
 	return nil
 }
 
-func (s *NotesService) DeleteByUser(userUUID string) error {
-	if strings.TrimSpace(userUUID) == "" {
-		return apperror.BadRequestError("user_uuid is required")
+func (s *NotesService) DeleteByWorkspace(workspaceID string) error {
+	if strings.TrimSpace(workspaceID) == "" {
+		return apperror.BadRequestError("workspace_id is required")
 	}
 
-	if err := s.repo.DeleteByUser(userUUID); err != nil {
-		return fmt.Errorf("delete indexed notes by user: %w", err)
+	if err := s.repo.DeleteByWorkspace(workspaceID); err != nil {
+		return fmt.Errorf("delete indexed notes by workspace: %w", err)
 	}
 
 	return nil
@@ -98,8 +95,8 @@ func validateIndexedNote(note handlermodel.IndexedNote) error {
 	switch {
 	case strings.TrimSpace(note.ID) == "":
 		return apperror.BadRequestError("id is required")
-	case strings.TrimSpace(note.UserUUID) == "":
-		return apperror.BadRequestError("user_uuid is required")
+	case strings.TrimSpace(note.WorkspaceID) == "":
+		return apperror.BadRequestError("workspace_id is required")
 	case strings.TrimSpace(note.Header) == "":
 		return apperror.BadRequestError("header is required")
 	case strings.TrimSpace(note.Body) == "":

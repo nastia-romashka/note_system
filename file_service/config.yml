@@ -3,6 +3,7 @@ is_debug: true
 minio:
   endpoint: 127.0.0.1:9000
   use_ssl: false
+  bucket: notes-files
 
 listen:
   type: port

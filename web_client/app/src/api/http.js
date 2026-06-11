@@ -17,11 +17,17 @@ class APIRequestError extends Error {
   }
 }
 
-export function authHeaders(token, accept = "application/json") {
-  return {
+export function authHeaders(token, accept = "application/json", workspaceId = "") {
+  const headers = {
     Accept: accept,
     Authorization: `Bearer ${token}`,
   };
+
+  if (workspaceId) {
+    headers["X-Workspace-Id"] = workspaceId;
+  }
+
+  return headers;
 }
 
 export async function request(path, options = {}) {

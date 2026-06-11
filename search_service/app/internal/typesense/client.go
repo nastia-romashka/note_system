@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,19 +52,19 @@ func NewClient(baseURL, apiKey, collection string, logger logging.Logger) (*Clie
 	return client, nil
 }
 
-func (c *Client) Search(q, userUUID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]handlermodel.SearchNote, error) {
+func (c *Client) Search(q, workspaceID, categoryUUID string, tagUUIDs []string, page, perPage int) ([]handlermodel.SearchNote, error) {
 	query := url.Values{}
 	if strings.TrimSpace(q) == "" {
 		query.Set("q", "*")
 	} else {
 		query.Set("q", q)
 	}
-	query.Set("query_by", "header,body,short_body,category_name,tag_names")
-	query.Set("sort_by", "created_date:desc")
-	query.Set("highlight_fields", "header,body,short_body")
+	query.Set("query_by", "header,body,category_name,tag_names,file_names_text")
+	query.Set("sort_by", "updated_at:desc")
+	query.Set("highlight_fields", "header,body,file_names_text")
 	query.Set("page", fmt.Sprintf("%d", page))
 	query.Set("per_page", fmt.Sprintf("%d", perPage))
-	query.Set("filter_by", buildFilter(userUUID, categoryUUID, tagUUIDs))
+	query.Set("filter_by", buildFilter(workspaceID, categoryUUID, tagUUIDs))
 
 	body, err := c.doRequest(context.Background(), http.MethodGet, path.Join("collections", c.collection, "documents", "search"), query, nil, http.StatusOK)
 	if err != nil {
@@ -78,16 +79,17 @@ func (c *Client) Search(q, userUUID, categoryUUID string, tagUUIDs []string, pag
 	result := make([]handlermodel.SearchNote, 0, len(payload.Hits))
 	for _, hit := range payload.Hits {
 		result = append(result, handlermodel.SearchNote{
-			Uuid:         hit.Document.ID,
-			UserUuid:     hit.Document.UserUUID,
-			Header:       hit.Document.Header,
-			Body:         hit.Document.Body,
-			ShortBody:    hit.Document.ShortBody,
-			CreatedDate:  hit.Document.CreatedDate,
-			CategoryUuid: hit.Document.CategoryUUID,
-			CategoryName: hit.Document.CategoryName,
-			Tags:         hit.Document.TagUUIDs,
-			TagNames:     hit.Document.TagNames,
+			Uuid:          hit.Document.ID,
+			Header:        hit.Document.Header,
+			Body:          hit.Document.Body,
+			ShortBody:     hit.Document.ShortBody,
+			CreatedDate:   hit.Document.CreatedAt,
+			UpdatedAt:     hit.Document.UpdatedAt,
+			CategoryUuid:  hit.Document.CategoryUUID,
+			CategoryName:  hit.Document.CategoryName,
+			Tags:          hit.Document.TagUUIDs,
+			TagNames:      hit.Document.TagNames,
+			FileNamesText: hit.Document.FileNamesText,
 		})
 	}
 
@@ -126,7 +128,7 @@ func (c *Client) UpsertMany(notes []handlermodel.IndexedNote) error {
 	return nil
 }
 
-func (c *Client) Delete(noteUUID, userUUID string) error {
+func (c *Client) Delete(noteUUID string) error {
 	_, err := c.doRequest(context.Background(), http.MethodDelete, path.Join("collections", c.collection, "documents", noteUUID), nil, nil, http.StatusOK)
 	if err != nil {
 		var appErr *apperror.AppError
@@ -139,9 +141,9 @@ func (c *Client) Delete(noteUUID, userUUID string) error {
 	return nil
 }
 
-func (c *Client) DeleteByUser(userUUID string) error {
+func (c *Client) DeleteByWorkspace(workspaceID string) error {
 	query := url.Values{}
-	query.Set("filter_by", fmt.Sprintf("user_uuid:=`%s`", escapeFilterValue(userUUID)))
+	query.Set("filter_by", fmt.Sprintf("workspace_id:=`%s`", escapeFilterValue(workspaceID)))
 
 	_, err := c.doRequest(
 		context.Background(),
@@ -159,9 +161,17 @@ func (c *Client) DeleteByUser(userUUID string) error {
 }
 
 func (c *Client) ensureCollection(ctx context.Context) error {
-	_, err := c.doRequest(ctx, http.MethodGet, path.Join("collections", c.collection), nil, nil, http.StatusOK)
+	body, err := c.doRequest(ctx, http.MethodGet, path.Join("collections", c.collection), nil, nil, http.StatusOK)
 	if err == nil {
-		return nil
+		if c.collectionSchemaMatches(body) {
+			return nil
+		}
+
+		c.logger.Warn("recreating incompatible typesense collection")
+		if _, err = c.doRequest(ctx, http.MethodDelete, path.Join("collections", c.collection), nil, nil, http.StatusOK); err != nil {
+			return fmt.Errorf("delete incompatible collection: %w", err)
+		}
+		return c.createCollection(ctx)
 	}
 
 	var appErr *apperror.AppError
@@ -169,35 +179,7 @@ func (c *Client) ensureCollection(ctx context.Context) error {
 		return fmt.Errorf("check collection: %w", err)
 	}
 
-	schema := map[string]any{
-		"name": c.collection,
-		"fields": []map[string]any{
-			{"name": "id", "type": "string"},
-			{"name": "user_uuid", "type": "string", "facet": true},
-			{"name": "header", "type": "string"},
-			{"name": "body", "type": "string"},
-			{"name": "short_body", "type": "string", "optional": true},
-			{"name": "category_uuid", "type": "string", "facet": true},
-			{"name": "category_name", "type": "string"},
-			{"name": "tag_uuids", "type": "string[]", "facet": true, "optional": true},
-			{"name": "tag_names", "type": "string[]", "optional": true},
-			{"name": "created_date", "type": "int64", "sort": true},
-		},
-		"default_sorting_field": "created_date",
-	}
-
-	body, marshalErr := json.Marshal(schema)
-	if marshalErr != nil {
-		return fmt.Errorf("marshal schema: %w", marshalErr)
-	}
-
-	_, err = c.doRequest(ctx, http.MethodPost, "collections", nil, body, http.StatusCreated, http.StatusOK)
-	if err != nil {
-		return fmt.Errorf("create collection: %w", err)
-	}
-
-	c.logger.Info("typesense collection created")
-	return nil
+	return c.createCollection(ctx)
 }
 
 func (c *Client) doRequest(ctx context.Context, method, resource string, query url.Values, body []byte, okStatusCodes ...int) ([]byte, error) {
@@ -247,8 +229,8 @@ func (c *Client) doRequest(ctx context.Context, method, resource string, query u
 	return nil, apperror.SystemError(fmt.Errorf("typesense returned status %d: %s", resp.StatusCode, string(responseBody)))
 }
 
-func buildFilter(userUUID, categoryUUID string, tagUUIDs []string) string {
-	parts := []string{fmt.Sprintf("user_uuid:=`%s`", escapeFilterValue(userUUID))}
+func buildFilter(workspaceID, categoryUUID string, tagUUIDs []string) string {
+	parts := []string{fmt.Sprintf("workspace_id:=`%s`", escapeFilterValue(workspaceID))}
 	if strings.TrimSpace(categoryUUID) != "" {
 		parts = append(parts, fmt.Sprintf("category_uuid:=`%s`", escapeFilterValue(categoryUUID)))
 	}
@@ -278,4 +260,78 @@ type searchResponse struct {
 
 type searchHit struct {
 	Document handlermodel.IndexedNote `json:"document"`
+}
+
+type collectionSchema struct {
+	Fields []collectionSchemaField `json:"fields"`
+}
+
+type collectionSchemaField struct {
+	Name string `json:"name"`
+}
+
+func (c *Client) createCollection(ctx context.Context) error {
+	schema := map[string]any{
+		"name": c.collection,
+		"fields": []map[string]any{
+			{"name": "id", "type": "string"},
+			{"name": "workspace_id", "type": "string", "facet": true},
+			{"name": "header", "type": "string"},
+			{"name": "body", "type": "string"},
+			{"name": "short_body", "type": "string", "optional": true},
+			{"name": "category_uuid", "type": "string", "facet": true},
+			{"name": "category_name", "type": "string"},
+			{"name": "tag_uuids", "type": "string[]", "facet": true, "optional": true},
+			{"name": "tag_names", "type": "string[]", "optional": true},
+			{"name": "file_names_text", "type": "string", "optional": true},
+			{"name": "created_at", "type": "int64", "sort": true},
+			{"name": "updated_at", "type": "int64", "sort": true},
+		},
+		"default_sorting_field": "updated_at",
+	}
+
+	body, marshalErr := json.Marshal(schema)
+	if marshalErr != nil {
+		return fmt.Errorf("marshal schema: %w", marshalErr)
+	}
+
+	if _, err := c.doRequest(ctx, http.MethodPost, "collections", nil, body, http.StatusCreated, http.StatusOK); err != nil {
+		return fmt.Errorf("create collection: %w", err)
+	}
+
+	c.logger.Info("typesense collection created")
+	return nil
+}
+
+func (c *Client) collectionSchemaMatches(body []byte) bool {
+	var schema collectionSchema
+	if err := json.Unmarshal(body, &schema); err != nil {
+		return false
+	}
+
+	fieldNames := make([]string, 0, len(schema.Fields))
+	for _, field := range schema.Fields {
+		fieldNames = append(fieldNames, field.Name)
+	}
+
+	required := []string{
+		"id",
+		"workspace_id",
+		"header",
+		"body",
+		"category_uuid",
+		"category_name",
+		"tag_uuids",
+		"tag_names",
+		"file_names_text",
+		"created_at",
+		"updated_at",
+	}
+	for _, fieldName := range required {
+		if !slices.Contains(fieldNames, fieldName) {
+			return false
+		}
+	}
+
+	return !slices.Contains(fieldNames, "user_uuid")
 }

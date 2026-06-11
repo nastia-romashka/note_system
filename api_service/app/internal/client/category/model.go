@@ -1,32 +1,37 @@
 package category
 
 type Category struct {
-	Uuid       string     `json:"uuid"`
-	Name       string     `json:"name"`
-	Color      string     `json:"color,omitempty"`
-	CreatedAt  int64      `json:"created_at,omitempty"`
-	UserUuid   string     `json:"user_uuid,omitempty"`
-	ParentUuid string     `json:"parent_uuid,omitempty"`
-	Children   []Category `json:"children,omitempty"`
+	Uuid           string     `json:"uuid"`
+	WorkspaceID    string     `json:"workspace_id,omitempty"`
+	AuthorUserUUID string     `json:"author_user_uuid,omitempty"`
+	Name           string     `json:"name"`
+	Color          string     `json:"color,omitempty"`
+	CreatedAt      int64      `json:"created_at,omitempty"`
+	ParentUuid     string     `json:"parent_uuid,omitempty"`
+	Children       []Category `json:"children,omitempty"`
 }
 
 type CreateCategoryDTO struct {
-	Name       string `json:"name"`
-	Color      string `json:"color,omitempty"`
-	UserUuid   string `json:"user_uuid"`
-	ParentUuid string `json:"parent_uuid,omitempty"`
+	Name           string `json:"name"`
+	Color          string `json:"color,omitempty"`
+	WorkspaceID    string `json:"workspace_id"`
+	WorkspaceName  string `json:"workspace_name,omitempty"`
+	WorkspaceType  string `json:"workspace_type,omitempty"`
+	AuthorUserUUID string `json:"author_user_uuid"`
+	ParentUuid     string `json:"parent_uuid,omitempty"`
 }
 
 type UpdateCategoryDTO struct {
-	Uuid       string `json:"uuid,omitempty"`
-	Name       string `json:"name,omitempty"`
-	Color      string `json:"color,omitempty"`
-	ParentUuid string `json:"parent_uuid,omitempty"`
+	Uuid        string `json:"uuid,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Color       string `json:"color,omitempty"`
+	ParentUuid  string `json:"parent_uuid,omitempty"`
 }
 
 type DeleteCategoryDTO struct {
-	Uuid     string `json:"uuid"`
-	UserUuid string `json:"user_uuid,omitempty"`
+	Uuid        string `json:"uuid"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
 }
 
 type CategoryStats struct {
@@ -34,12 +39,14 @@ type CategoryStats struct {
 }
 
 type GraphNode struct {
-	ID           string `json:"id"`
-	Type         string `json:"type"`
-	Label        string `json:"label"`
-	Color        string `json:"color,omitempty"`
-	CategoryUuid string `json:"category_uuid,omitempty"`
-	CreatedAt    int64  `json:"created_at,omitempty"`
+	ID             string `json:"id"`
+	Type           string `json:"type"`
+	Label          string `json:"label"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	AuthorUserUUID string `json:"author_user_uuid,omitempty"`
+	Color          string `json:"color,omitempty"`
+	CategoryUuid   string `json:"category_uuid,omitempty"`
+	CreatedAt      int64  `json:"created_at,omitempty"`
 }
 
 type GraphEdge struct {
@@ -54,25 +61,29 @@ type GraphData struct {
 }
 
 type CreateGraphNoteDTO struct {
-	Uuid         string `json:"uuid"`
-	UserUuid     string `json:"user_uuid"`
-	CategoryUuid string `json:"category_uuid"`
-	Header       string `json:"header"`
-	CreatedDate  int64  `json:"created_date"`
+	Uuid           string `json:"uuid"`
+	WorkspaceID    string `json:"workspace_id"`
+	WorkspaceName  string `json:"workspace_name,omitempty"`
+	WorkspaceType  string `json:"workspace_type,omitempty"`
+	AuthorUserUUID string `json:"author_user_uuid"`
+	CategoryUuid   string `json:"category_uuid"`
+	Header         string `json:"header"`
+	CreatedDate    int64  `json:"created_date"`
 }
 
 type UpdateGraphNoteDTO struct {
-	UserUuid     string `json:"user_uuid"`
+	WorkspaceID  string `json:"workspace_id"`
 	CategoryUuid string `json:"category_uuid,omitempty"`
 	Header       string `json:"header,omitempty"`
 }
 
 type DeleteGraphNoteDTO struct {
-	UserUuid string `json:"user_uuid"`
+	WorkspaceID string `json:"workspace_id"`
 }
 
 type UserGraphLinkDTO struct {
-	UserUuid string `json:"user_uuid"`
-	SourceID string `json:"source_id"`
-	TargetID string `json:"target_id"`
+	WorkspaceID string `json:"workspace_id"`
+	UserUuid    string `json:"user_uuid"`
+	SourceID    string `json:"source_id"`
+	TargetID    string `json:"target_id"`
 }
