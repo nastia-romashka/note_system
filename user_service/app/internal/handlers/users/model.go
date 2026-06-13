@@ -150,6 +150,10 @@ type UpdateWorkspaceMemberDTO struct {
 	Status        string `json:"status,omitempty"`
 }
 
+type WorkspaceActorDTO struct {
+	UserUUID string `json:"user_uuid"`
+}
+
 type ResolveWorkspaceInviteDTO struct {
 	UserUUID string `json:"user_uuid"`
 }

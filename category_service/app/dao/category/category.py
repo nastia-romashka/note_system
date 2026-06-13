@@ -54,6 +54,10 @@ class CategoryDAO(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def delete_workspace(self, workspace_id: str) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
     def create_note(self, note: CreateGraphNoteDTO) -> None:
         raise NotImplementedError
 

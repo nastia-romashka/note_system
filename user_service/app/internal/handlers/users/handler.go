@@ -27,6 +27,7 @@ const (
 	revokeSessionURL             = "/api/user-sessions/revoke"
 	workspacesURL                = "/api/workspaces"
 	workspaceURL                 = "/api/workspaces/{uuid}"
+	workspaceLeaveURL            = "/api/workspaces/{uuid}/leave"
 	workspaceMembersURL          = "/api/workspaces/{uuid}/members"
 	workspaceMemberURL           = "/api/workspaces/{uuid}/members/{member_uuid}"
 	workspaceInvitesURL          = "/api/workspaces/{uuid}/invites"
@@ -51,6 +52,8 @@ type UserService interface {
 	GetWorkspace(workspaceUUID string) (Workspace, error)
 	GetPersonalWorkspace(userUUID string) (Workspace, error)
 	CreateWorkspace(dto CreateWorkspaceDTO) (Workspace, error)
+	LeaveWorkspace(workspaceUUID, userUUID string) error
+	DeleteWorkspace(workspaceUUID, actorUserUUID string) error
 	GetWorkspaceMembers(workspaceUUID string) ([]WorkspaceMember, error)
 	UpdateWorkspaceMember(workspaceUUID, memberUserUUID string, dto UpdateWorkspaceMemberDTO) (WorkspaceMember, error)
 	GetWorkspaceInvites(userUUID string) ([]WorkspaceInvite, error)
@@ -82,6 +85,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+revokeSessionURL, apperror.Middleware(h.RevokeUserSession))
 	mux.HandleFunc("POST "+workspacesURL, apperror.Middleware(h.CreateWorkspace))
 	mux.HandleFunc("GET "+workspaceURL, apperror.Middleware(h.GetWorkspace))
+	mux.HandleFunc("DELETE "+workspaceURL, apperror.Middleware(h.DeleteWorkspace))
+	mux.HandleFunc("POST "+workspaceLeaveURL, apperror.Middleware(h.LeaveWorkspace))
 	mux.HandleFunc("GET "+workspaceMembersURL, apperror.Middleware(h.GetWorkspaceMembers))
 	mux.HandleFunc("PATCH "+workspaceMemberURL, apperror.Middleware(h.UpdateWorkspaceMember))
 	mux.HandleFunc("GET "+workspaceInvitesURL, apperror.Middleware(h.GetWorkspaceInvites))

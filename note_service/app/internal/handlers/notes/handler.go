@@ -16,6 +16,7 @@ const (
 	noteURL     = "/api/notes/{uuid}"
 	statsURL    = "/api/stats"
 	calendarURL = "/api/calendar"
+	workspaceURL = "/api/workspaces/{workspace_id}"
 )
 
 type NoteService interface {
@@ -26,6 +27,7 @@ type NoteService interface {
 	Create(dto CreateNoteDTO) (string, error)
 	Update(noteUUID, userUUID, workspaceID string, dto UpdateNoteDTO, headerUpdate, bodyUpdate, categoryUpdate, tagsUpdate, eventUpdate bool) error
 	Delete(noteUUID, userUUID, workspaceID string) error
+	DeleteWorkspace(workspaceID string) error
 }
 
 type Handler struct {
@@ -40,6 +42,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+noteURL, apperror.Middleware(h.GetNote))
 	mux.HandleFunc("PATCH "+noteURL, apperror.Middleware(h.PartiallyUpdateNote))
 	mux.HandleFunc("DELETE "+noteURL, apperror.Middleware(h.DeleteNote))
+	mux.HandleFunc("DELETE "+workspaceURL, apperror.Middleware(h.DeleteWorkspace))
 	mux.HandleFunc("GET "+statsURL, apperror.Middleware(h.GetStats))
 }
 
@@ -244,6 +247,20 @@ func (h *Handler) DeleteNote(w http.ResponseWriter, r *http.Request) error {
 	workspaceID := workspaceIDFromQuery(r)
 
 	if err := h.NoteService.Delete(noteUUID, userUUID, workspaceID); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) error {
+	workspaceID := r.PathValue("workspace_id")
+	if workspaceID == "" {
+		return apperror.BadRequestError("workspace_id is required")
+	}
+
+	if err := h.NoteService.DeleteWorkspace(workspaceID); err != nil {
 		return err
 	}
 

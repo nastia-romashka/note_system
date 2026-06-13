@@ -11,6 +11,7 @@ import (
 	categoryclient "myproject/internal/client/category"
 	fileclient "myproject/internal/client/file"
 	noteclient "myproject/internal/client/note"
+	searchclient "myproject/internal/client/search"
 	userclient "myproject/internal/client/user"
 	"myproject/internal/requestctx"
 	"myproject/pkg/logging"
@@ -20,6 +21,7 @@ import (
 
 const (
 	workspaceURL        = "/api/workspaces/{uuid}"
+	workspaceLeaveURL   = "/api/workspaces/{uuid}/leave"
 	workspaceMembersURL = "/api/workspaces/{uuid}/members"
 	workspaceMemberURL  = "/api/workspaces/{uuid}/members/{member_uuid}"
 	workspaceInvitesURL = "/api/workspaces/{uuid}/invites"
@@ -31,16 +33,18 @@ type Handler struct {
 	CategoryService categoryclient.CategoryService
 	NoteService     noteclient.NoteService
 	FileService     fileclient.FileService
+	SearchService   searchclient.SearchService
 }
 
 type Overview struct {
-	Workspace      userclient.Workspace `json:"workspace"`
-	Role           string               `json:"role"`
-	Status         string               `json:"status"`
-	CanInvite      bool                 `json:"can_invite"`
-	MembersCount   int                  `json:"members_count"`
-	Stats          OverviewStats        `json:"stats"`
-	UpcomingEvents []noteclient.Note    `json:"upcoming_events"`
+	Workspace        userclient.Workspace `json:"workspace"`
+	Role             string               `json:"role"`
+	Status           string               `json:"status"`
+	CanInvite        bool                 `json:"can_invite"`
+	CanManageMembers bool                 `json:"can_manage_members"`
+	MembersCount     int                  `json:"members_count"`
+	Stats            OverviewStats        `json:"stats"`
+	UpcomingEvents   []noteclient.Note    `json:"upcoming_events"`
 }
 
 type OverviewStats struct {
@@ -64,6 +68,8 @@ type UpdateMemberRequest struct {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc(http.MethodGet+" "+workspaceURL, jwt.JWTMiddleware(workspacemw.Middleware(h.UserService, apperror.Middleware(h.GetOverview))))
+	mux.HandleFunc(http.MethodDelete+" "+workspaceURL, jwt.JWTMiddleware(workspacemw.Middleware(h.UserService, apperror.Middleware(h.DeleteWorkspace))))
+	mux.HandleFunc(http.MethodPost+" "+workspaceLeaveURL, jwt.JWTMiddleware(workspacemw.Middleware(h.UserService, apperror.Middleware(h.LeaveWorkspace))))
 	mux.HandleFunc(http.MethodGet+" "+workspaceMembersURL, jwt.JWTMiddleware(workspacemw.Middleware(h.UserService, apperror.Middleware(h.GetMembers))))
 	mux.HandleFunc(http.MethodPatch+" "+workspaceMemberURL, jwt.JWTMiddleware(workspacemw.Middleware(h.UserService, apperror.Middleware(h.UpdateMember))))
 	mux.HandleFunc(http.MethodGet+" "+workspaceInvitesURL, jwt.JWTMiddleware(workspacemw.Middleware(h.UserService, apperror.Middleware(h.GetInvites))))
@@ -112,11 +118,12 @@ func (h *Handler) GetOverview(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	overview := Overview{
-		Workspace:    workspace,
-		Role:         role,
-		Status:       "active",
-		CanInvite:    role == "owner" || role == "editor",
-		MembersCount: len(members),
+		Workspace:        workspace,
+		Role:             role,
+		Status:           "active",
+		CanInvite:        role == "owner",
+		CanManageMembers: role == "owner",
+		MembersCount:     len(members),
 		Stats: OverviewStats{
 			CategoriesCount: categoryStats.CategoriesCount,
 			NotesCount:      noteStats.NotesCount,
@@ -254,6 +261,46 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_, _ = w.Write(data)
+	return nil
+}
+
+func (h *Handler) LeaveWorkspace(w http.ResponseWriter, r *http.Request) error {
+	userUUID, workspaceID, err := h.validateWorkspaceRequest(r)
+	if err != nil {
+		return err
+	}
+
+	if err = h.UserService.LeaveWorkspace(r.Context(), workspaceID, userUUID); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) error {
+	userUUID, workspaceID, err := h.validateWorkspaceRequest(r)
+	if err != nil {
+		return err
+	}
+
+	if err = h.FileService.DeleteWorkspace(r.Context(), workspaceID); err != nil {
+		return err
+	}
+	if err = h.NoteService.DeleteWorkspace(r.Context(), workspaceID); err != nil {
+		return err
+	}
+	if err = h.SearchService.DeleteNotesByWorkspace(r.Context(), workspaceID); err != nil {
+		return err
+	}
+	if err = h.CategoryService.DeleteWorkspace(r.Context(), workspaceID); err != nil {
+		return err
+	}
+	if err = h.UserService.DeleteWorkspace(r.Context(), workspaceID, userUUID); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 

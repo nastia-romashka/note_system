@@ -30,21 +30,23 @@ const (
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Remember bool   `json:"remember,omitempty"`
 }
 
 type signupRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Email    string `json:"email"`
+	Remember bool   `json:"remember,omitempty"`
 }
 
 type refreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
+	Remember     bool   `json:"remember,omitempty"`
 }
 
 type tokenResponse struct {
-	Token        string `json:"token"`
-	RefreshToken string `json:"refresh_token"`
+	Token string `json:"token"`
 }
 
 type Handler struct {
@@ -76,7 +78,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	response, err := h.issueTokens(r, userUUID, req.Email)
+	response, err := h.issueTokens(r, w, userUUID, req.Email, req.Remember)
 	if err != nil {
 		return err
 	}
@@ -100,7 +102,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	response, err := h.issueTokens(r, authUser.Uuid, authUser.Email)
+	response, err := h.issueTokens(r, w, authUser.Uuid, authUser.Email, req.Remember)
 	if err != nil {
 		return err
 	}
@@ -109,10 +111,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) error {
-	var req refreshRequest
 	defer r.Body.Close()
 
-	if err := decodeJSONBody(r, &req); err != nil {
+	req, err := decodeOptionalRefreshRequest(r)
+	if err != nil {
 		return err
 	}
 
@@ -131,7 +133,11 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) error {
 		IPAddress:           clientIP(r),
 	})
 	if err != nil {
-		return normalizeRefreshError(err)
+		normalizedErr := normalizeRefreshError(err)
+		if isUnauthorizedError(normalizedErr) {
+			clearRefreshTokenCookie(w)
+		}
+		return normalizedErr
 	}
 
 	userData, err := h.UserService.GetUser(r.Context(), session.UserUUID)
@@ -145,35 +151,36 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) error {
 		return apperror.APIError(http.StatusInternalServerError, "API-50001", "token generation failed", "token generation failed")
 	}
 
-	return writeJSON(w, http.StatusCreated, tokenResponse{
-		Token:        accessToken,
-		RefreshToken: newRefreshToken,
-	})
+	setRefreshTokenCookie(w, newRefreshToken, req.Remember)
+	return writeJSON(w, http.StatusCreated, tokenResponse{Token: accessToken})
 }
 
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) error {
-	var req refreshRequest
 	defer r.Body.Close()
 
-	if err := decodeJSONBody(r, &req); err != nil {
+	req, err := decodeOptionalRefreshRequest(r)
+	if err != nil {
 		return err
 	}
 
 	refreshToken := strings.TrimSpace(req.RefreshToken)
 	if refreshToken == "" {
-		return apperror.BadRequestError("refresh_token is required")
+		clearRefreshTokenCookie(w)
+		w.WriteHeader(http.StatusNoContent)
+		return nil
 	}
 
-	err := h.UserService.RevokeSession(r.Context(), hashRefreshToken(refreshToken))
+	err = h.UserService.RevokeSession(r.Context(), hashRefreshToken(refreshToken))
 	if err != nil && !isNotFoundError(err) {
 		return err
 	}
 
+	clearRefreshTokenCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 
-func (h *Handler) issueTokens(r *http.Request, userUUID, email string) (tokenResponse, error) {
+func (h *Handler) issueTokens(r *http.Request, w http.ResponseWriter, userUUID, email string, remember bool) (tokenResponse, error) {
 	accessToken, err := buildAccessToken(userUUID, email)
 	if err != nil {
 		h.Logger.Error("failed to build access token", "error", err)
@@ -192,10 +199,8 @@ func (h *Handler) issueTokens(r *http.Request, userUUID, email string) (tokenRes
 		return tokenResponse{}, err
 	}
 
-	return tokenResponse{
-		Token:        accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+	setRefreshTokenCookie(w, refreshToken, remember)
+	return tokenResponse{Token: accessToken}, nil
 }
 
 func buildAccessToken(userUUID, email string) (string, error) {
@@ -293,6 +298,88 @@ func normalizeRefreshError(err error) error {
 	return err
 }
 
+func decodeOptionalRefreshRequest(r *http.Request) (refreshRequest, error) {
+	req := refreshRequest{}
+
+	if err := decodeOptionalJSONBody(r, &req); err != nil {
+		return refreshRequest{}, err
+	}
+
+	if cookie, err := r.Cookie(config.GetConfig().RefreshCookie.Name); err == nil {
+		req.RefreshToken = strings.TrimSpace(cookie.Value)
+	}
+
+	req.RefreshToken = strings.TrimSpace(req.RefreshToken)
+	return req, nil
+}
+
+func decodeOptionalJSONBody(r *http.Request, dst any) error {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(dst); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return apperror.BadRequestError("invalid JSON body")
+	}
+
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return apperror.BadRequestError("request body must contain a single JSON object")
+	}
+
+	return nil
+}
+
+func setRefreshTokenCookie(w http.ResponseWriter, refreshToken string, remember bool) {
+	cfg := config.GetConfig()
+	cookie := &http.Cookie{
+		Name:     cfg.RefreshCookie.Name,
+		Value:    refreshToken,
+		Path:     cfg.RefreshCookie.Path,
+		Domain:   cfg.RefreshCookie.Domain,
+		HttpOnly: true,
+		SameSite: parseSameSite(cfg.RefreshCookie.SameSite),
+		Secure:   cfg.RefreshCookie.Secure,
+	}
+
+	if remember {
+		cookie.Expires = refreshExpiry()
+		cookie.MaxAge = int(time.Until(cookie.Expires).Seconds())
+	}
+
+	http.SetCookie(w, cookie)
+}
+
+func clearRefreshTokenCookie(w http.ResponseWriter) {
+	cfg := config.GetConfig()
+	http.SetCookie(w, &http.Cookie{
+		Name:     cfg.RefreshCookie.Name,
+		Value:    "",
+		Path:     cfg.RefreshCookie.Path,
+		Domain:   cfg.RefreshCookie.Domain,
+		HttpOnly: true,
+		SameSite: parseSameSite(cfg.RefreshCookie.SameSite),
+		Secure:   cfg.RefreshCookie.Secure,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+	})
+}
+
+func parseSameSite(value string) http.SameSite {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	case "lax":
+		fallthrough
+	default:
+		return http.SameSiteLaxMode
+	}
+}
+
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -306,4 +393,9 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload any) error {
 func isNotFoundError(err error) bool {
 	var appErr *apperror.AppError
 	return errors.As(err, &appErr) && appErr.StatusCode == http.StatusNotFound
+}
+
+func isUnauthorizedError(err error) bool {
+	var appErr *apperror.AppError
+	return errors.As(err, &appErr) && appErr.StatusCode == http.StatusUnauthorized
 }

@@ -150,6 +150,112 @@ func (s *Storage) CreateWorkspace(dto handlermodel.CreateWorkspaceDTO) (handlerm
 	return workspace, nil
 }
 
+func (s *Storage) LeaveWorkspace(workspaceUUID, userUUID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin leave workspace transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	workspace, err := findWorkspaceByID(ctx, tx, workspaceUUID)
+	if err != nil {
+		return err
+	}
+	if workspace.IsPersonal {
+		return apperror.BadRequestError("personal workspace cannot be left")
+	}
+
+	member, err := findWorkspaceMember(ctx, tx, workspaceUUID, userUUID, true)
+	if err != nil {
+		return err
+	}
+	if member.Status != "active" {
+		return apperror.BadRequestError("workspace membership is not active")
+	}
+	if member.Role == "owner" {
+		return apperror.BadRequestError("workspace owner cannot leave the workspace")
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`
+			UPDATE workspace_members
+			SET status = 'removed'
+			WHERE workspace_id = $1
+				AND user_id = $2
+		`,
+		workspaceUUID,
+		userUUID,
+	)
+	if err != nil {
+		if isPostgresCode(err, "22P02") {
+			return apperror.BadRequestError("invalid workspace uuid or user uuid")
+		}
+		return fmt.Errorf("leave workspace membership: %w", err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit leave workspace transaction: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Storage) DeleteWorkspace(workspaceUUID, actorUserUUID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin delete workspace transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	workspace, err := findWorkspaceByID(ctx, tx, workspaceUUID)
+	if err != nil {
+		return err
+	}
+	if workspace.IsPersonal {
+		return apperror.BadRequestError("personal workspace cannot be deleted")
+	}
+
+	role, err := findWorkspaceRole(ctx, tx, workspaceUUID, actorUserUUID)
+	if err != nil {
+		return err
+	}
+	if role != "owner" || workspace.OwnerUserUUID != actorUserUUID {
+		return apperror.UnauthorizedError("workspace deletion is not allowed")
+	}
+
+	commandTag, err := tx.Exec(
+		ctx,
+		`DELETE FROM workspaces WHERE id = $1`,
+		workspaceUUID,
+	)
+	if err != nil {
+		if isPostgresCode(err, "22P02") {
+			return apperror.BadRequestError("invalid workspace uuid")
+		}
+		return fmt.Errorf("delete workspace: %w", err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return apperror.NotFoundError("workspace not found")
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete workspace transaction: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Storage) FindWorkspaceMembers(workspaceUUID string) ([]handlermodel.WorkspaceMember, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -225,7 +331,7 @@ func (s *Storage) UpdateWorkspaceMember(workspaceUUID, memberUserUUID string, dt
 	if err != nil {
 		return handlermodel.WorkspaceMember{}, err
 	}
-	if actorRole != "owner" && actorRole != "editor" {
+	if actorRole != "owner" {
 		return handlermodel.WorkspaceMember{}, apperror.UnauthorizedError("workspace member update is not allowed")
 	}
 	if dto.ActorUserUUID == memberUserUUID {
@@ -361,7 +467,7 @@ func (s *Storage) FindWorkspaceInvitesByWorkspace(workspaceUUID, actorUserUUID s
 	if err != nil {
 		return nil, err
 	}
-	if role != "owner" && role != "editor" {
+	if role != "owner" {
 		return nil, apperror.UnauthorizedError("workspace invites are not available")
 	}
 
@@ -434,7 +540,7 @@ func (s *Storage) CreateWorkspaceInvite(workspaceUUID string, dto handlermodel.C
 	if err != nil {
 		return handlermodel.WorkspaceInvite{}, err
 	}
-	if role != "owner" && role != "editor" {
+	if role != "owner" {
 		return handlermodel.WorkspaceInvite{}, apperror.UnauthorizedError("workspace invite is not allowed")
 	}
 

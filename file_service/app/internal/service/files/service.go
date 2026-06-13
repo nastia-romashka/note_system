@@ -189,6 +189,19 @@ func (s *service) Delete(noteUUID, fileID, userUUID, workspaceID string) (err er
 	return nil
 }
 
+func (s *service) DeleteWorkspace(workspaceID string) error {
+	workspaceID, err := validateWorkspaceID(workspaceID)
+	if err != nil {
+		return err
+	}
+
+	if err = s.storage.DeleteWorkspace(nilContext(), workspaceID); err != nil {
+		return fmt.Errorf("delete workspace files: %w", err)
+	}
+
+	return nil
+}
+
 func sanitizeFileName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {

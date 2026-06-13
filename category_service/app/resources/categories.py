@@ -65,6 +65,20 @@ async def get_graph(
     return service.get_workspace_graph(workspace_id=workspace_id)
 
 
+@router.delete(
+    "/api/workspaces/{workspace_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_workspace(
+    request: Request,
+    workspace_id: str,
+    service: CategoryService = Depends(get_category_service),
+) -> Response:
+    service.delete_workspace(workspace_id=workspace_id)
+    request.app.state.logger.debug("deleted workspace graph workspace_id=%s", workspace_id)
+    return Response(status_code=HTTPStatus.NO_CONTENT)
+
+
 @router.post(
     "/api/graph/notes",
     status_code=status.HTTP_201_CREATED,

@@ -41,6 +41,7 @@ type CategoryService interface {
 	CreateCategory(ctx context.Context, dto CreateCategoryDTO) (string, error)
 	UpdateCategory(ctx context.Context, uuid string, dto UpdateCategoryDTO) error
 	DeleteCategory(ctx context.Context, dto DeleteCategoryDTO) error
+	DeleteWorkspace(ctx context.Context, workspaceID string) error
 	CreateNoteNode(ctx context.Context, dto CreateGraphNoteDTO) error
 	UpdateNoteNode(ctx context.Context, noteUuid string, dto UpdateGraphNoteDTO) error
 	DeleteNoteNode(ctx context.Context, noteUuid, workspaceID string) error
@@ -300,6 +301,38 @@ func (c *client) DeleteCategory(ctx context.Context, dto DeleteCategoryDTO) erro
 	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	req = req.WithContext(reqCtx)
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		return nil
+	}
+
+	return apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s", workspaceID), nil)
+	if err != nil {
+		return fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, uri, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
 	response, err := c.base.SendRequest(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request due to error: %w", err)

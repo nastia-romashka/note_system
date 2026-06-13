@@ -1,8 +1,9 @@
-const TOKEN_KEY = "note-system-token";
-const REFRESH_TOKEN_KEY = "note-system-refresh-token";
+const REMEMBER_KEY = "note-system-session-remember";
 const WORKSPACE_KEY = "note-system-workspace-id";
 
 export const SESSION_EVENT = "note-system-session-change";
+
+let inMemoryToken = "";
 
 function dispatchSessionEvent(type) {
   window.dispatchEvent(
@@ -10,18 +11,14 @@ function dispatchSessionEvent(type) {
       detail: {
         type,
         token: getStoredToken(),
-        refreshToken: getStoredRefreshToken(),
+        remember: shouldRememberSession(),
       },
     }),
   );
 }
 
 export function getStoredToken() {
-  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || "";
-}
-
-export function getStoredRefreshToken() {
-  return localStorage.getItem(REFRESH_TOKEN_KEY) || sessionStorage.getItem(REFRESH_TOKEN_KEY) || "";
+  return inMemoryToken;
 }
 
 export function getStoredWorkspaceId() {
@@ -29,20 +26,18 @@ export function getStoredWorkspaceId() {
 }
 
 export function shouldRememberSession() {
-  return localStorage.getItem(TOKEN_KEY) !== null || localStorage.getItem(REFRESH_TOKEN_KEY) !== null;
+  return localStorage.getItem(REMEMBER_KEY) !== null || sessionStorage.getItem(REMEMBER_KEY) !== null;
 }
 
-export function persistStoredSession(token, refreshToken, remember = true) {
+export function persistStoredSession(token, remember = shouldRememberSession()) {
+  inMemoryToken = token;
+
   if (remember) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.setItem(REMEMBER_KEY, "1");
+    sessionStorage.removeItem(REMEMBER_KEY);
   } else {
-    sessionStorage.setItem(TOKEN_KEY, token);
-    sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    sessionStorage.setItem(REMEMBER_KEY, "1");
+    localStorage.removeItem(REMEMBER_KEY);
   }
 
   dispatchSessionEvent("persist");
@@ -69,10 +64,9 @@ export function clearStoredWorkspaceId() {
 }
 
 export function clearStoredSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  inMemoryToken = "";
+  localStorage.removeItem(REMEMBER_KEY);
+  sessionStorage.removeItem(REMEMBER_KEY);
   clearStoredWorkspaceId();
   dispatchSessionEvent("clear");
 }

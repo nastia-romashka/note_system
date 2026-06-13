@@ -33,7 +33,7 @@ function App() {
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState(() =>
     UI_PREVIEW ? PREVIEW_WORKSPACES[0]?.id || null : getStoredWorkspaceId() || null,
   );
-  const { page, setPage, token, persistSession, clearSession } = useAuthSession(UI_PREVIEW);
+  const { page, setPage, token, isRestoring, persistSession, clearSession } = useAuthSession(UI_PREVIEW);
   const activeWorkspaceId = currentWorkspaceId || "";
 
   const notesData = useNotesData({
@@ -42,6 +42,9 @@ function App() {
     uiPreview: UI_PREVIEW,
     setMessage,
     setLoading,
+    onNotesChanged: async () => {
+      await calendarData.refreshCurrentMonth();
+    },
   });
   const calendarData = useCalendarData({
     token,
@@ -69,6 +72,9 @@ function App() {
     setMessage,
     uiPreview: UI_PREVIEW,
     onWorkspaceMembershipChange: (workspaceId) => {
+      notesData.resetNotesState();
+      filesData.resetFilesState();
+      setCurrentWorkspaceId(null);
       void loadWorkspaces(workspaceId);
     },
   });
@@ -92,6 +98,9 @@ function App() {
     if (UI_PREVIEW) {
       return;
     }
+    if (isRestoring) {
+      return;
+    }
 
     if (!token) {
       setWorkspaces([]);
@@ -101,10 +110,13 @@ function App() {
     }
 
     void loadWorkspaces(getStoredWorkspaceId() || currentWorkspaceId || "");
-  }, [token]);
+  }, [token, isRestoring]);
 
   useEffect(() => {
     if (UI_PREVIEW) {
+      return;
+    }
+    if (isRestoring) {
       return;
     }
 
@@ -114,7 +126,7 @@ function App() {
     }
 
     persistStoredWorkspaceId(currentWorkspaceId);
-  }, [currentWorkspaceId]);
+  }, [currentWorkspaceId, isRestoring]);
 
   async function loadWorkspaces(preferredWorkspaceId = "") {
     if (UI_PREVIEW || !token) {
@@ -234,6 +246,48 @@ function App() {
     });
   }
 
+  async function leaveCurrentWorkspace() {
+    if (!currentWorkspace) {
+      return;
+    }
+
+    if (!window.confirm(`Выйти из пространства "${currentWorkspace.name}"?`)) {
+      return;
+    }
+
+    const success = await workspaceSettingsData.submitLeaveWorkspace();
+    if (!success) {
+      return;
+    }
+
+    notesData.resetNotesState();
+    filesData.resetFilesState();
+    setCurrentWorkspaceId(null);
+    setPage("notes");
+    await loadWorkspaces("");
+  }
+
+  async function deleteCurrentWorkspace() {
+    if (!currentWorkspace) {
+      return;
+    }
+
+    if (!window.confirm(`Удалить пространство "${currentWorkspace.name}"? Это действие нельзя отменить.`)) {
+      return;
+    }
+
+    const success = await workspaceSettingsData.submitDeleteWorkspace();
+    if (!success) {
+      return;
+    }
+
+    notesData.resetNotesState();
+    filesData.resetFilesState();
+    setCurrentWorkspaceId(null);
+    setPage("notes");
+    await loadWorkspaces("");
+  }
+
   async function logout() {
     if (UI_PREVIEW) {
       clearSession();
@@ -253,6 +307,22 @@ function App() {
     setWorkspaces([]);
     setCurrentWorkspaceId(null);
     setMessage({ type: "info", text: "Сессия завершена." });
+  }
+
+  if (!UI_PREVIEW && isRestoring) {
+    return (
+      <div className="site-shell">
+        <div className="page-glow page-glow-left" />
+        <div className="page-glow page-glow-right" />
+        <main className="auth-page">
+          <section className="auth-panel">
+            <header className="auth-header">
+              <h1>Восстанавливаем сессию</h1>
+            </header>
+          </section>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -484,7 +554,8 @@ function App() {
           onMemberDraftChange={workspaceSettingsData.updateMemberDraft}
           onSubmitMemberUpdate={(memberUserId) => workspaceSettingsData.submitMemberUpdate(memberUserId)}
           onSubmitInvite={() => workspaceSettingsData.submitInvite()}
-          onRefresh={workspaceSettingsData.refreshWorkspaceSettings}
+          onLeaveWorkspace={() => void leaveCurrentWorkspace()}
+          onDeleteWorkspace={() => void deleteCurrentWorkspace()}
           onOpenNotes={() => setPage("notes")}
           onOpenGraph={() => setPage("graph")}
           onOpenCalendar={() => setPage("calendar")}

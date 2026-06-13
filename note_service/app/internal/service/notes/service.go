@@ -312,6 +312,19 @@ func (s *service) Delete(noteUUID, userUUID, workspaceID string) (err error) {
 	return nil
 }
 
+func (s *service) DeleteWorkspace(workspaceID string) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return apperror.BadRequestError("workspace_id is required")
+	}
+
+	if err := s.storage.DeleteWorkspace(workspaceID); err != nil {
+		return fmt.Errorf("delete workspace notes: %w", err)
+	}
+
+	return nil
+}
+
 func makeShortBody(body string) string {
 	body = strings.TrimSpace(body)
 	if body == "" {

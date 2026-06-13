@@ -15,7 +15,8 @@ export default function WorkspaceSettingsPage({
   onSubmitMemberUpdate,
   onInviteFormChange,
   onSubmitInvite,
-  onRefresh,
+  onLeaveWorkspace,
+  onDeleteWorkspace,
   onOpenNotes,
   onOpenGraph,
   onOpenCalendar,
@@ -27,6 +28,9 @@ export default function WorkspaceSettingsPage({
   const workspace = overview?.workspace || currentWorkspace || {};
   const stats = overview?.stats || {};
   const canInvite = Boolean(overview?.can_invite);
+  const canManageMembers = Boolean(overview?.can_manage_members ?? overview?.can_invite);
+  const isOwner = overview?.role === "owner";
+  const canLeaveWorkspace = !isOwner && overview?.status === "active";
 
   return (
     <main className="profile-page workspace-settings-page">
@@ -92,9 +96,16 @@ export default function WorkspaceSettingsPage({
                 Пригласить
               </button>
             )}
-            <button className="secondary-button" type="button" onClick={onRefresh} disabled={loading}>
-              Обновить
-            </button>
+            {canLeaveWorkspace && (
+              <button className="danger-button" type="button" onClick={onLeaveWorkspace} disabled={loading}>
+                Выйти из пространства
+              </button>
+            )}
+            {isOwner && (
+              <button className="danger-button" type="button" onClick={onDeleteWorkspace} disabled={loading}>
+                Удалить пространство
+              </button>
+            )}
           </div>
         </article>
       </section>
@@ -122,7 +133,7 @@ export default function WorkspaceSettingsPage({
               <div>
                 <strong>{member.username || member.email || "Участник"}</strong>
                 <span>{member.email || "email не указан"}</span>
-                {canInvite && member.role !== "owner" && (
+                {canManageMembers && member.role !== "owner" && (
                   <div className="workspace-member-controls">
                     <select
                       value={memberDrafts?.[member.user_uuid]?.role || member.role || "viewer"}
@@ -144,10 +155,7 @@ export default function WorkspaceSettingsPage({
                       className="secondary-button"
                       type="button"
                       onClick={() => onSubmitMemberUpdate(member.user_uuid)}
-                      disabled={
-                        loading ||
-                        !hasMemberChanges(member, memberDrafts?.[member.user_uuid])
-                      }
+                      disabled={loading || !hasMemberChanges(member, memberDrafts?.[member.user_uuid])}
                     >
                       Сохранить
                     </button>
@@ -279,7 +287,7 @@ function formatRole(value) {
     return "Владелец";
   }
 
-  if (value === "editor") {
+  if (value === "editor" || value === "creator") {
     return "Креатор";
   }
 

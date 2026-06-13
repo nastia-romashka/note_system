@@ -5,7 +5,7 @@ import { createNote, deleteNote, duplicateNote, fetchNotes, fetchSearchNotes, up
 import { createTag, fetchTags } from "../api/tagsApi";
 import { PREVIEW_DATA } from "../preview/previewData";
 
-export function useNotesData({ token, workspaceId, uiPreview, setMessage, setLoading }) {
+export function useNotesData({ token, workspaceId, uiPreview, setMessage, setLoading, onNotesChanged }) {
   const [categories, setCategories] = useState(uiPreview ? PREVIEW_DATA.categories : []);
   const [notes, setNotes] = useState(uiPreview ? PREVIEW_DATA.notes["cat-1"] : []);
   const [tags, setTags] = useState(uiPreview ? PREVIEW_DATA.tags : []);
@@ -288,6 +288,7 @@ export function useNotesData({ token, workspaceId, uiPreview, setMessage, setLoa
       setDuplicateDialog(null);
       setSelectedCategoryId(duplicated.category_uuid);
       await loadNotes(duplicated.category_uuid, duplicated.uuid);
+      await onNotesChanged?.();
       setMessage({ type: "success", text: "Заметка продублирована." });
     } catch (error) {
       handleError(error);
@@ -542,6 +543,7 @@ export function useNotesData({ token, workspaceId, uiPreview, setMessage, setLoa
       setNoteForm({ header: "", body: "", tags: "" });
       setMessage({ type: "success", text: "Заметка создана." });
       await loadNotes(selectedCategoryId, "");
+      await onNotesChanged?.();
     } catch (error) {
       handleError(error);
     } finally {
@@ -582,6 +584,7 @@ export function useNotesData({ token, workspaceId, uiPreview, setMessage, setLoa
       );
       setMessage({ type: "success", text: "Заметка обновлена." });
       await loadNotes(selectedCategoryId, selectedNote.uuid);
+      await onNotesChanged?.();
     } catch (error) {
       handleError(error);
     } finally {
@@ -600,6 +603,7 @@ export function useNotesData({ token, workspaceId, uiPreview, setMessage, setLoa
       await deleteNote(token, noteId, workspaceId);
       setMessage({ type: "success", text: "Заметка удалена." });
       await loadNotes(selectedCategoryId, "");
+      await onNotesChanged?.();
     } catch (error) {
       handleError(error);
     } finally {

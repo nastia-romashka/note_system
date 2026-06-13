@@ -1,10 +1,14 @@
 import { request } from "./http";
-import { getStoredRefreshToken } from "./session";
+import { shouldRememberSession } from "./session";
 
-export function login(username, password) {
+export function login(username, password, remember = true) {
   return request("/api/auth", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ username, password, remember }),
     skipAuthRefresh: true,
   });
 }
@@ -12,6 +16,10 @@ export function login(username, password) {
 export function signup(payload) {
   return request("/api/signup", {
     method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(payload),
     skipAuthRefresh: true,
   });
@@ -20,20 +28,23 @@ export function signup(payload) {
 export function refreshSession() {
   return request("/api/auth", {
     method: "PUT",
-    body: JSON.stringify({ refresh_token: getStoredRefreshToken() }),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ remember: shouldRememberSession() }),
     skipAuthRefresh: true,
   });
 }
 
 export async function logoutCurrentSession() {
-  const refreshToken = getStoredRefreshToken();
-  if (!refreshToken) {
-    return null;
-  }
-
   return request("/api/auth", {
     method: "DELETE",
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
     skipAuthRefresh: true,
   });
 }

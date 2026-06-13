@@ -56,6 +56,14 @@ export function useCalendarData({ token, workspaceId, categories, uiPreview, set
     }
   }
 
+  async function refreshCurrentMonth() {
+    if (uiPreview || !token) {
+      return;
+    }
+
+    await loadMonth(monthRange.from, monthRange.to);
+  }
+
   function openCreateDialog() {
     setCreateDialog({
       categoryUuid: firstCategoryUuid(categories),
@@ -162,6 +170,7 @@ export function useCalendarData({ token, workspaceId, categories, uiPreview, set
     openCreateDialog,
     closeCreateDialog,
     confirmCreateFromCalendar,
+    refreshCurrentMonth,
     openNote,
   };
 }

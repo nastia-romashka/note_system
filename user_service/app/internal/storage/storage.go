@@ -18,6 +18,8 @@ type Storage interface {
 	FindWorkspaceByID(workspaceUUID string) (handlermodel.Workspace, error)
 	FindPersonalWorkspace(userUUID string) (handlermodel.Workspace, error)
 	CreateWorkspace(dto handlermodel.CreateWorkspaceDTO) (handlermodel.Workspace, error)
+	LeaveWorkspace(workspaceUUID, userUUID string) error
+	DeleteWorkspace(workspaceUUID, actorUserUUID string) error
 	FindWorkspaceMembers(workspaceUUID string) ([]handlermodel.WorkspaceMember, error)
 	UpdateWorkspaceMember(workspaceUUID, memberUserUUID string, dto handlermodel.UpdateWorkspaceMemberDTO) (handlermodel.WorkspaceMember, error)
 	FindWorkspaceInvitesByUser(userUUID string) ([]handlermodel.WorkspaceInvite, error)

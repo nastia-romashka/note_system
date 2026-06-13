@@ -40,6 +40,7 @@ type NoteService interface {
 	CreateNote(ctx context.Context, dto CreateNoteDTO) (string, error)
 	UpdateNote(ctx context.Context, uuid, userUuid, workspaceID string, dto UpdateNoteDTO) error
 	DeleteNote(ctx context.Context, uuid, userUuid, workspaceID string) error
+	DeleteWorkspace(ctx context.Context, workspaceID string) error
 	GetTags(ctx context.Context, tagUUIDs []string, userUuid, workspaceID string) ([]byte, error)
 	CreateTag(ctx context.Context, dto CreateTagDTO) (string, error)
 	DeleteTag(ctx context.Context, uuid, userUuid, workspaceID string) error
@@ -309,6 +310,38 @@ func (c *client) DeleteNote(ctx context.Context, uuid, userUuid, workspaceID str
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		return nil
+	}
+
+	return apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s", workspaceID), nil)
+	if err != nil {
+		return fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, uri, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 

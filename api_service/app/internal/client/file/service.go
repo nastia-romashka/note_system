@@ -39,6 +39,7 @@ type FileService interface {
 	UploadNoteFile(ctx context.Context, params UploadFileParams) ([]byte, string, error)
 	DownloadNoteFile(ctx context.Context, noteUUID, fileID, userUUID, workspaceID string) (*rest.APIResponse, error)
 	DeleteNoteFile(ctx context.Context, noteUUID, fileID, userUUID, workspaceID string) error
+	DeleteWorkspace(ctx context.Context, workspaceID string) error
 }
 
 func (c *client) GetNoteFiles(ctx context.Context, noteUUID, userUUID, workspaceID string) ([]byte, error) {
@@ -216,6 +217,37 @@ func (c *client) DeleteNoteFile(ctx context.Context, noteUUID, fileID, userUUID,
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	if response.IsOk {
+		return nil
+	}
+
+	return apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
+}
+
+func (c *client) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s", workspaceID), nil)
+	if err != nil {
+		return fmt.Errorf("failed to build URL: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, uri, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	req = req.WithContext(reqCtx)
 

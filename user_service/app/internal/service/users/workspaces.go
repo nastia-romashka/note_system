@@ -16,6 +16,14 @@ const (
 	defaultWorkspaceInviteTTLDays = 7
 )
 
+func normalizeWorkspaceRole(role string) string {
+	role = strings.TrimSpace(strings.ToLower(role))
+	if role == "creator" {
+		return "editor"
+	}
+	return role
+}
+
 func (s *service) GetWorkspaces(userUUID string) ([]handlermodel.Workspace, error) {
 	userUUID = strings.TrimSpace(userUUID)
 	if userUUID == "" {
@@ -97,6 +105,48 @@ func (s *service) CreateWorkspace(dto handlermodel.CreateWorkspaceDTO) (handlerm
 	return workspace, nil
 }
 
+func (s *service) LeaveWorkspace(workspaceUUID, userUUID string) error {
+	workspaceUUID = strings.TrimSpace(workspaceUUID)
+	userUUID = strings.TrimSpace(userUUID)
+
+	if workspaceUUID == "" {
+		return apperror.BadRequestError("workspace_uuid is required")
+	}
+	if userUUID == "" {
+		return apperror.BadRequestError("user_uuid is required")
+	}
+
+	if err := s.storage.LeaveWorkspace(workspaceUUID, userUUID); err != nil {
+		if errors.Is(err, apperror.ErrUnauthorized) || errors.Is(err, apperror.ErrNotFound) {
+			return err
+		}
+		return fmt.Errorf("leave workspace: %w", err)
+	}
+
+	return nil
+}
+
+func (s *service) DeleteWorkspace(workspaceUUID, actorUserUUID string) error {
+	workspaceUUID = strings.TrimSpace(workspaceUUID)
+	actorUserUUID = strings.TrimSpace(actorUserUUID)
+
+	if workspaceUUID == "" {
+		return apperror.BadRequestError("workspace_uuid is required")
+	}
+	if actorUserUUID == "" {
+		return apperror.BadRequestError("actor_user_uuid is required")
+	}
+
+	if err := s.storage.DeleteWorkspace(workspaceUUID, actorUserUUID); err != nil {
+		if errors.Is(err, apperror.ErrUnauthorized) || errors.Is(err, apperror.ErrNotFound) {
+			return err
+		}
+		return fmt.Errorf("delete workspace: %w", err)
+	}
+
+	return nil
+}
+
 func (s *service) GetWorkspaceMembers(workspaceUUID string) ([]handlermodel.WorkspaceMember, error) {
 	workspaceUUID = strings.TrimSpace(workspaceUUID)
 	if workspaceUUID == "" {
@@ -118,7 +168,7 @@ func (s *service) UpdateWorkspaceMember(workspaceUUID, memberUserUUID string, dt
 	workspaceUUID = strings.TrimSpace(workspaceUUID)
 	memberUserUUID = strings.TrimSpace(memberUserUUID)
 	dto.ActorUserUUID = strings.TrimSpace(dto.ActorUserUUID)
-	dto.Role = strings.TrimSpace(strings.ToLower(dto.Role))
+	dto.Role = normalizeWorkspaceRole(dto.Role)
 	dto.Status = strings.TrimSpace(strings.ToLower(dto.Status))
 
 	if workspaceUUID == "" {
@@ -191,7 +241,7 @@ func (s *service) CreateWorkspaceInvite(workspaceUUID string, dto handlermodel.C
 	workspaceUUID = strings.TrimSpace(workspaceUUID)
 	dto.InvitedByUserUUID = strings.TrimSpace(dto.InvitedByUserUUID)
 	dto.Email = strings.TrimSpace(strings.ToLower(dto.Email))
-	dto.Role = strings.TrimSpace(strings.ToLower(dto.Role))
+	dto.Role = normalizeWorkspaceRole(dto.Role)
 
 	if workspaceUUID == "" {
 		return handlermodel.WorkspaceInvite{}, apperror.BadRequestError("workspace_uuid is required")

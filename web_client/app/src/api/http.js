@@ -1,6 +1,5 @@
 import {
   clearStoredSession,
-  getStoredRefreshToken,
   persistStoredSession,
   shouldRememberSession,
 } from "./session";
@@ -85,7 +84,10 @@ async function fetchWithAutoRefresh(path, options = {}) {
 
 async function performFetch(path, options = {}) {
   const { skipAuthRefresh: _skipAuthRefresh, ...requestOptions } = options;
-  return fetch(`${API_BASE_URL}${path}`, requestOptions);
+  return fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
+    ...requestOptions,
+  });
 }
 
 function shouldRefreshRequest(response, options = {}) {
@@ -99,7 +101,7 @@ function shouldRefreshRequest(response, options = {}) {
     return false;
   }
 
-  return getStoredRefreshToken() !== "";
+  return true;
 }
 
 function withAuthorization(options, token) {
@@ -118,19 +120,15 @@ async function refreshAccessToken() {
     return refreshPromise;
   }
 
-  const refreshToken = getStoredRefreshToken();
-  if (!refreshToken) {
-    throw new Error("missing refresh token");
-  }
-
   refreshPromise = (async () => {
     const response = await fetch(`${API_BASE_URL}/api/auth`, {
       method: "PUT",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      body: JSON.stringify({ remember: shouldRememberSession() }),
     });
 
     if (!response.ok) {
@@ -138,7 +136,7 @@ async function refreshAccessToken() {
     }
 
     const data = await response.json();
-    persistStoredSession(data.token, data.refresh_token, shouldRememberSession());
+    persistStoredSession(data.token, shouldRememberSession());
     return data.token;
   })();
 

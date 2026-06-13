@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 
 import {
   createWorkspaceInvite,
+  deleteWorkspace,
   fetchWorkspaceMembers,
   fetchWorkspaceOverview,
   fetchWorkspaceSentInvites,
+  leaveWorkspace,
   updateWorkspaceMember,
 } from "../api/workspacesApi";
 
@@ -60,15 +62,27 @@ export function useWorkspaceSettingsData({
     try {
       setLoading(true);
       const nextOverview = await fetchWorkspaceOverview(token, workspaceId);
-      const [nextMembers, nextInvites] = await Promise.all([
+      const [membersResult, invitesResult] = await Promise.allSettled([
         fetchWorkspaceMembers(token, workspaceId),
         nextOverview?.can_invite ? fetchWorkspaceSentInvites(token, workspaceId) : Promise.resolve([]),
       ]);
 
+      const nextMembers = membersResult.status === "fulfilled" && Array.isArray(membersResult.value) ? membersResult.value : [];
+      const nextInvites = invitesResult.status === "fulfilled" && Array.isArray(invitesResult.value) ? invitesResult.value : [];
+
       setOverview(nextOverview || null);
-      setMembers(Array.isArray(nextMembers) ? nextMembers : []);
-      setInvites(Array.isArray(nextInvites) ? nextInvites : []);
-      setMemberDrafts(createMemberDrafts(Array.isArray(nextMembers) ? nextMembers : []));
+      setMembers(nextMembers);
+      setInvites(nextInvites);
+      setMemberDrafts(createMemberDrafts(nextMembers));
+
+      if (invitesResult.status === "rejected" && nextOverview?.can_invite) {
+        setMessage({
+          type: "warning",
+          text: invitesResult.reason instanceof Error
+            ? invitesResult.reason.message
+            : "Не удалось загрузить отправленные приглашения, но управление пространством доступно.",
+        });
+      }
     } catch (error) {
       setMessage({
         type: "error",
@@ -195,6 +209,66 @@ export function useWorkspaceSettingsData({
     }
   }
 
+  async function submitLeaveWorkspace() {
+    if (!workspaceId) {
+      return false;
+    }
+
+    if (uiPreview) {
+      setMessage({ type: "success", text: "Вы вышли из пространства." });
+      return true;
+    }
+
+    if (!token) {
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      await leaveWorkspace(token, workspaceId);
+      setMessage({ type: "success", text: "Вы вышли из пространства." });
+      return true;
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Не удалось выйти из пространства.",
+      });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitDeleteWorkspace() {
+    if (!workspaceId) {
+      return false;
+    }
+
+    if (uiPreview) {
+      setMessage({ type: "success", text: "Пространство удалено." });
+      return true;
+    }
+
+    if (!token) {
+      return false;
+    }
+
+    try {
+      setLoading(true);
+      await deleteWorkspace(token, workspaceId);
+      setMessage({ type: "success", text: "Пространство удалено." });
+      return true;
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Не удалось удалить пространство.",
+      });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return {
     overview,
     members,
@@ -207,6 +281,8 @@ export function useWorkspaceSettingsData({
     refreshWorkspaceSettings: loadWorkspaceSettings,
     submitMemberUpdate,
     submitInvite,
+    submitLeaveWorkspace,
+    submitDeleteWorkspace,
   };
 }
 

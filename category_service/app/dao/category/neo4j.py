@@ -330,6 +330,25 @@ class Neo4jCategoryDAO(CategoryDAO):
             },
         )
 
+    def delete_workspace(self, workspace_id: str) -> None:
+        self.storage.delete(
+            """
+            MATCH (workspace:Workspace {id: $workspace_id})
+            OPTIONAL MATCH (workspace)-[:HAS_CATEGORY|CHILD*1..]->(category:Category)
+            WITH workspace, collect(DISTINCT category) AS categories
+            UNWIND ([workspace] + categories) AS node
+            WITH DISTINCT node
+            WHERE node IS NOT NULL
+            OPTIONAL MATCH (node)-[:HAS_NOTE]->(note:Note {workspace_id: $workspace_id})
+            WITH collect(DISTINCT node) + collect(DISTINCT note) AS nodes
+            UNWIND nodes AS node
+            WITH DISTINCT node
+            WHERE node IS NOT NULL
+            DETACH DELETE node
+            """,
+            {"workspace_id": workspace_id},
+        )
+
     def create_note(self, note: CreateGraphNoteDTO) -> None:
         self.storage.create(
             """

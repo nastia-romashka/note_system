@@ -6,12 +6,12 @@ import {
   persistStoredSession,
   SESSION_EVENT,
 } from "../api/session";
+import { refreshSession } from "../api/authApi";
 
 export function useAuthSession(uiPreview = false) {
-  const storedToken = uiPreview ? "" : getStoredToken();
-
-  const [page, setPage] = useState(() => (uiPreview ? "login" : storedToken ? "notes" : "login"));
-  const [token, setToken] = useState(() => (uiPreview ? "preview-token" : storedToken));
+  const [page, setPage] = useState(() => (uiPreview ? "login" : "login"));
+  const [token, setToken] = useState(() => (uiPreview ? "preview-token" : getStoredToken()));
+  const [isRestoring, setIsRestoring] = useState(() => !uiPreview);
 
   useEffect(() => {
     if (uiPreview) {
@@ -38,20 +38,59 @@ export function useAuthSession(uiPreview = false) {
     return () => window.removeEventListener(SESSION_EVENT, syncSession);
   }, [uiPreview]);
 
-  function persistSession(nextToken, nextRefreshToken, remember = true) {
+  useEffect(() => {
+    if (uiPreview) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function restoreSession() {
+      try {
+        const authData = await refreshSession();
+        if (cancelled || !authData?.token) {
+          return;
+        }
+
+        persistStoredSession(authData.token);
+        setToken(authData.token);
+        setPage("notes");
+      } catch {
+        if (!cancelled) {
+          clearStoredSession();
+          setToken("");
+          setPage("login");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsRestoring(false);
+        }
+      }
+    }
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uiPreview]);
+
+  function persistSession(nextToken, remember = true) {
     setToken(nextToken);
     setPage("notes");
+    setIsRestoring(false);
 
     if (uiPreview) {
       return;
     }
 
-    persistStoredSession(nextToken, nextRefreshToken, remember);
+    persistStoredSession(nextToken, remember);
   }
 
   function clearSession() {
     setToken("");
     setPage("login");
+    setIsRestoring(false);
 
     if (uiPreview) {
       return;
@@ -64,6 +103,7 @@ export function useAuthSession(uiPreview = false) {
     page,
     setPage,
     token,
+    isRestoring,
     persistSession,
     clearSession,
   };

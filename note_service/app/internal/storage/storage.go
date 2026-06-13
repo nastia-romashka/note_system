@@ -24,6 +24,7 @@ type Storage interface {
 	CountStats(scope Scope) (handlermodel.NoteStats, error)
 	Update(noteUUID string, scope Scope, note handlermodel.Note, opts UpdateOptions) error
 	Delete(noteUUID string, scope Scope) error
+	DeleteWorkspace(workspaceID string) error
 	CreateTag(tag tagmodel.Tag) (string, error)
 	FindTags(tagUUIDs []string, scope Scope) ([]tagmodel.Tag, error)
 	CheckTagsExist(tagUUIDs []string, scope Scope) error

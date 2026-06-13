@@ -15,6 +15,7 @@ const (
 	filesURL = "/api/files"
 	fileURL  = "/api/files/{id}"
 	statsURL = "/api/stats"
+	workspaceURL = "/api/workspaces/{workspace_id}"
 )
 
 type FileService interface {
@@ -23,6 +24,7 @@ type FileService interface {
 	GetStats(userUUID, workspaceID string) (domainfile.FileStats, error)
 	Create(file domainfile.UploadFile) (domainfile.FileInfo, error)
 	Delete(noteUUID, fileID, userUUID, workspaceID string) error
+	DeleteWorkspace(workspaceID string) error
 }
 
 type Handler struct {
@@ -36,6 +38,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+filesURL, apperror.Middleware(h.GetFilesByNoteUUID))
 	mux.HandleFunc("POST "+filesURL, apperror.Middleware(h.CreateFile))
 	mux.HandleFunc("DELETE "+fileURL, apperror.Middleware(h.DeleteFile))
+	mux.HandleFunc("DELETE "+workspaceURL, apperror.Middleware(h.DeleteWorkspace))
 	mux.HandleFunc("GET "+statsURL, apperror.Middleware(h.GetStats))
 }
 
@@ -210,6 +213,20 @@ func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) error {
 	workspaceID := workspaceIDFromQuery(r)
 
 	if err := h.FileService.Delete(noteUUID, fileID, userUUID, workspaceID); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) error {
+	workspaceID := r.PathValue("workspace_id")
+	if workspaceID == "" {
+		return apperror.BadRequestError("workspace_id is required")
+	}
+
+	if err := h.FileService.DeleteWorkspace(workspaceID); err != nil {
 		return err
 	}
 

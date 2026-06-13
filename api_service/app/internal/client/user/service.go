@@ -47,6 +47,8 @@ type UserService interface {
 	RotateSession(ctx context.Context, dto RotateUserSessionDTO) (UserSession, error)
 	RevokeSession(ctx context.Context, refreshTokenHash string) error
 	GetWorkspace(ctx context.Context, workspaceUUID string) (Workspace, error)
+	LeaveWorkspace(ctx context.Context, workspaceUUID, userUUID string) error
+	DeleteWorkspace(ctx context.Context, workspaceUUID, actorUserUUID string) error
 	GetWorkspaceMembers(ctx context.Context, workspaceUUID string) ([]WorkspaceMember, error)
 	UpdateWorkspaceMember(ctx context.Context, workspaceUUID, memberUserUUID string, dto UpdateWorkspaceMemberDTO) (WorkspaceMember, error)
 	GetWorkspaceInvites(ctx context.Context, workspaceUUID, userUUID string) ([]WorkspaceInvite, error)
@@ -517,6 +519,14 @@ func (c *client) GetWorkspace(ctx context.Context, workspaceUUID string) (worksp
 	)
 }
 
+func (c *client) LeaveWorkspace(ctx context.Context, workspaceUUID, userUUID string) error {
+	return c.sendWorkspaceActorAction(ctx, http.MethodPost, fmt.Sprintf("workspaces/%s/leave", workspaceUUID), userUUID)
+}
+
+func (c *client) DeleteWorkspace(ctx context.Context, workspaceUUID, actorUserUUID string) error {
+	return c.sendWorkspaceActorAction(ctx, http.MethodDelete, fmt.Sprintf("workspaces/%s", workspaceUUID), actorUserUUID)
+}
+
 func (c *client) GetWorkspaceMembers(ctx context.Context, workspaceUUID string) (members []WorkspaceMember, err error) {
 	uri, err := c.base.BuildURL(fmt.Sprintf("workspaces/%s/members", workspaceUUID), nil)
 	if err != nil {
@@ -801,4 +811,44 @@ func (c *client) buildInternalURL(resource string) (string, error) {
 
 	parsedURL.Path = path.Join(basePath, resource)
 	return parsedURL.String(), nil
+}
+
+func (c *client) sendWorkspaceActorAction(ctx context.Context, method, resource, userUUID string) error {
+	uri, err := c.base.BuildURL(resource, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build URL. error: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(WorkspaceActorDTO{UserUUID: userUUID})
+	if err != nil {
+		return fmt.Errorf("failed to marshal dto: %w", err)
+	}
+
+	req, err := http.NewRequest(method, uri, bytes.NewBuffer(dataBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create new request due to error: %w", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req = req.WithContext(reqCtx)
+
+	response, err := c.base.SendRequest(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request due to error: %w", err)
+	}
+
+	if response.IsOk {
+		if response.Body() != nil {
+			_ = response.Body().Close()
+		}
+		return nil
+	}
+
+	return apperror.APIError(
+		response.StatusCode(),
+		response.Error.ErrorCode,
+		response.Error.Message,
+		response.Error.DeveloperMessage,
+	)
 }

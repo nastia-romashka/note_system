@@ -121,6 +121,50 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
+func (h *Handler) LeaveWorkspace(w http.ResponseWriter, r *http.Request) error {
+	workspaceUUID := workspaceUUIDFromParams(r)
+	if workspaceUUID == "" {
+		return apperror.BadRequestError("empty workspace uuid")
+	}
+
+	var dto WorkspaceActorDTO
+	defer r.Body.Close()
+
+	if err := decodeJSONBody(r, &dto); err != nil {
+		h.Logger.Warn("failed to decode leave workspace payload", "error", err)
+		return err
+	}
+
+	if err := h.UserService.LeaveWorkspace(workspaceUUID, dto.UserUUID); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) error {
+	workspaceUUID := workspaceUUIDFromParams(r)
+	if workspaceUUID == "" {
+		return apperror.BadRequestError("empty workspace uuid")
+	}
+
+	var dto WorkspaceActorDTO
+	defer r.Body.Close()
+
+	if err := decodeJSONBody(r, &dto); err != nil {
+		h.Logger.Warn("failed to decode delete workspace payload", "error", err)
+		return err
+	}
+
+	if err := h.UserService.DeleteWorkspace(workspaceUUID, dto.UserUUID); err != nil {
+		return err
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 func (h *Handler) GetWorkspaceMembers(w http.ResponseWriter, r *http.Request) error {
 	workspaceUUID := workspaceUUIDFromParams(r)
 	if workspaceUUID == "" {

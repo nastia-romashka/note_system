@@ -87,6 +87,42 @@ export async function createWorkspaceInvite(token, workspaceId, payload) {
   return text.trim() ? JSON.parse(text) : null;
 }
 
+export async function leaveWorkspace(token, workspaceId) {
+  const response = await requestRaw(`/api/workspaces/${workspaceId}/leave`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(token, "application/json", workspaceId),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    const errorData = await readSafeJson(response);
+    throw new Error(errorData?.developer_message || errorData?.message || "Не удалось выйти из пространства.");
+  }
+
+  return null;
+}
+
+export async function deleteWorkspace(token, workspaceId) {
+  const response = await requestRaw(`/api/workspaces/${workspaceId}`, {
+    method: "DELETE",
+    headers: {
+      ...authHeaders(token, "application/json", workspaceId),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    const errorData = await readSafeJson(response);
+    throw new Error(errorData?.developer_message || errorData?.message || "Не удалось удалить пространство.");
+  }
+
+  return null;
+}
+
 export async function acceptWorkspaceInvite(token, inviteId) {
   const response = await requestRaw(`/api/workspaces/invites/${inviteId}/accept`, {
     method: "POST",

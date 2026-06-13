@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -479,6 +480,28 @@ func (s *Storage) Delete(noteUUID string, scope storage.Scope) (err error) {
 
 	if result.DeletedCount == 0 {
 		return apperror.NotFoundError("note not found")
+	}
+
+	return nil
+}
+
+func (s *Storage) DeleteWorkspace(workspaceID string) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return apperror.BadRequestError("workspace_id is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	filter := bson.M{"workspace_id": workspaceID}
+
+	if _, err := s.noteCollection.DeleteMany(ctx, filter); err != nil {
+		return fmt.Errorf("delete workspace notes: %w", err)
+	}
+
+	if _, err := s.tagCollection.DeleteMany(ctx, filter); err != nil {
+		return fmt.Errorf("delete workspace tags: %w", err)
 	}
 
 	return nil

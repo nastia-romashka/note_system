@@ -16,15 +16,15 @@ export default function AuthPage({
   async function handleLogin(event) {
     event.preventDefault();
     if (uiPreview) {
-      onSessionReady("preview-token", "preview-refresh-token", loginForm.remember);
+      onSessionReady("preview-token", loginForm.remember);
       onMessage({ type: "success", text: "Preview mode: открыт экран заметок." });
       return;
     }
 
     try {
       setLoading(true);
-      const authData = await login(loginForm.username, loginForm.password);
-      onSessionReady(authData.token, authData.refresh_token, loginForm.remember);
+      const authData = await login(loginForm.username, loginForm.password, loginForm.remember);
+      onSessionReady(authData.token, loginForm.remember);
       onMessage({ type: "success", text: "Вход выполнен." });
     } catch (error) {
       onMessage({
@@ -39,15 +39,15 @@ export default function AuthPage({
   async function handleSignup(event) {
     event.preventDefault();
     if (uiPreview) {
-      onSessionReady("preview-token", "preview-refresh-token", true);
+      onSessionReady("preview-token", true);
       onMessage({ type: "success", text: "Preview mode: открыт экран заметок после регистрации." });
       return;
     }
 
     try {
       setLoading(true);
-      const authData = await signup(signupForm);
-      onSessionReady(authData.token, authData.refresh_token, true);
+      const authData = await signup({ ...signupForm, remember: true });
+      onSessionReady(authData.token, true);
       onMessage({ type: "success", text: "Аккаунт создан." });
     } catch (error) {
       onMessage({

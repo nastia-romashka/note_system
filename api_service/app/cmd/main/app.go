@@ -143,6 +143,7 @@ func main() {
 		CategoryService: categoryService,
 		NoteService:     noteService,
 		FileService:     fileService,
+		SearchService:   searchService,
 	}
 	workspacesHandler.Register(router)
 

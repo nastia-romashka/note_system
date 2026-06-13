@@ -3,6 +3,11 @@
 is_debag: true
 jwt:
   secret: local-dev-jwt-secret-please-change-before-prod-2026
+refresh_cookie:
+  name: note_system_refresh
+  path: /api/auth
+  same_site: lax
+  secure: false
 listen:
   type: port
   bind_ip: localhost

@@ -75,7 +75,7 @@ func openAPISpec() map[string]any {
 					"operationId": "signUp",
 					"requestBody": jsonBody(schemaRef("SignupRequest"), true),
 					"responses": map[string]any{
-						"201": jsonResponse("Access and refresh tokens", schemaRef("TokenResponse")),
+						"201": jsonResponse("Access token; refresh token is set in HttpOnly cookie", schemaRef("TokenResponse")),
 						"400": errorResponse(),
 					},
 				},
@@ -87,7 +87,7 @@ func openAPISpec() map[string]any {
 					"operationId": "login",
 					"requestBody": jsonBody(schemaRef("AuthRequest"), true),
 					"responses": map[string]any{
-						"201": jsonResponse("Access and refresh tokens", schemaRef("TokenResponse")),
+						"201": jsonResponse("Access token; refresh token is set in HttpOnly cookie", schemaRef("TokenResponse")),
 						"400": errorResponse(),
 						"401": errorResponse(),
 					},
@@ -96,9 +96,9 @@ func openAPISpec() map[string]any {
 					"tags":        []string{"auth"},
 					"summary":     "Refresh access token",
 					"operationId": "refreshToken",
-					"requestBody": jsonBody(schemaRef("RefreshRequest"), true),
+					"requestBody": jsonBody(schemaRef("RefreshRequest"), false),
 					"responses": map[string]any{
-						"201": jsonResponse("Refreshed access and refresh tokens", schemaRef("TokenResponse")),
+						"201": jsonResponse("Refreshed access token; refresh token is rotated in HttpOnly cookie", schemaRef("TokenResponse")),
 						"400": errorResponse(),
 						"401": errorResponse(),
 					},
@@ -107,7 +107,7 @@ func openAPISpec() map[string]any {
 					"tags":        []string{"auth"},
 					"summary":     "Logout and revoke current refresh session",
 					"operationId": "logout",
-					"requestBody": jsonBody(schemaRef("RefreshRequest"), true),
+					"requestBody": jsonBody(schemaRef("RefreshRequest"), false),
 					"responses": map[string]any{
 						"204": noContentResponse("Refresh session revoked"),
 						"400": errorResponse(),
@@ -493,6 +493,34 @@ func openAPISpec() map[string]any {
 						"404": errorResponse(),
 					},
 				},
+				"delete": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Delete shared workspace",
+					"operationId": "deleteWorkspace",
+					"security":    bearerSecurity,
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"responses": map[string]any{
+						"204": noContentResponse("Workspace deleted"),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
+			},
+			"/api/workspaces/{uuid}/leave": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"workspaces"},
+					"summary":     "Leave shared workspace",
+					"operationId": "leaveWorkspace",
+					"security":    bearerSecurity,
+					"parameters":  []map[string]any{pathParam("uuid", "Workspace UUID")},
+					"responses": map[string]any{
+						"204": noContentResponse("Workspace left"),
+						"400": errorResponse(),
+						"401": errorResponse(),
+						"404": errorResponse(),
+					},
+				},
 			},
 			"/api/workspaces/{uuid}/members": map[string]any{
 				"get": map[string]any{
@@ -648,6 +676,7 @@ func openAPISpec() map[string]any {
 					"properties": map[string]any{
 						"username": map[string]any{"type": "string"},
 						"password": map[string]any{"type": "string"},
+						"remember": map[string]any{"type": "boolean"},
 					},
 				},
 				"SignupRequest": map[string]any{
@@ -657,21 +686,21 @@ func openAPISpec() map[string]any {
 						"username": map[string]any{"type": "string"},
 						"password": map[string]any{"type": "string"},
 						"email":    map[string]any{"type": "string", "format": "email"},
+						"remember": map[string]any{"type": "boolean"},
 					},
 				},
 				"RefreshRequest": map[string]any{
-					"type":     "object",
-					"required": []string{"refresh_token"},
+					"type": "object",
 					"properties": map[string]any{
-						"refresh_token": map[string]any{"type": "string"},
+						"refresh_token": map[string]any{"type": "string", "description": "Legacy fallback. Main flow uses HttpOnly cookie."},
+						"remember":      map[string]any{"type": "boolean"},
 					},
 				},
 				"TokenResponse": map[string]any{
 					"type":     "object",
-					"required": []string{"token", "refresh_token"},
+					"required": []string{"token"},
 					"properties": map[string]any{
-						"token":         map[string]any{"type": "string"},
-						"refresh_token": map[string]any{"type": "string"},
+						"token": map[string]any{"type": "string"},
 					},
 				},
 				"Category": map[string]any{
@@ -897,13 +926,14 @@ func openAPISpec() map[string]any {
 				"WorkspaceOverview": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"workspace":       schemaRef("Workspace"),
-						"role":            map[string]any{"type": "string", "enum": []string{"owner", "editor", "viewer"}},
-						"status":          map[string]any{"type": "string"},
-						"can_invite":      map[string]any{"type": "boolean"},
-						"members_count":   map[string]any{"type": "integer"},
-						"stats":           schemaRef("WorkspaceOverviewStats"),
-						"upcoming_events": arraySchemaRef("Note"),
+						"workspace":          schemaRef("Workspace"),
+						"role":               map[string]any{"type": "string", "enum": []string{"owner", "editor", "viewer"}},
+						"status":             map[string]any{"type": "string"},
+						"can_invite":         map[string]any{"type": "boolean"},
+						"can_manage_members": map[string]any{"type": "boolean"},
+						"members_count":      map[string]any{"type": "integer"},
+						"stats":              schemaRef("WorkspaceOverviewStats"),
+						"upcoming_events":    arraySchemaRef("Note"),
 					},
 				},
 				"CreateWorkspaceInviteRequest": map[string]any{

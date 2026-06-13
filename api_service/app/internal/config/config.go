@@ -16,6 +16,13 @@ type Config struct {
 		AccessTokenTTLMinutes  int    `yaml:"access_token_ttl_minutes" env:"API_SERVICE_ACCESS_TOKEN_TTL_MINUTES" env-default:"30"`
 		RefreshTokenTTLMinutes int    `yaml:"refresh_token_ttl_minutes" env:"API_SERVICE_REFRESH_TOKEN_TTL_MINUTES" env-default:"43200"`
 	}
+	RefreshCookie struct {
+		Name     string `yaml:"name" env:"API_SERVICE_REFRESH_COOKIE_NAME" env-default:"note_system_refresh"`
+		Path     string `yaml:"path" env:"API_SERVICE_REFRESH_COOKIE_PATH" env-default:"/api/auth"`
+		Domain   string `yaml:"domain" env:"API_SERVICE_REFRESH_COOKIE_DOMAIN"`
+		SameSite string `yaml:"same_site" env:"API_SERVICE_REFRESH_COOKIE_SAME_SITE" env-default:"lax"`
+		Secure   bool   `yaml:"secure" env:"API_SERVICE_REFRESH_COOKIE_SECURE" env-default:"false"`
+	} `yaml:"refresh_cookie"`
 	CategoryService struct {
 		URL string `yaml:"url" env:"API_SERVICE_CATEGORY_URL" env-required:"true"`
 	} `yaml:"category_service" env-required:"true"`

@@ -82,6 +82,25 @@ func (s *storage) DeleteFile(ctx context.Context, noteUUID, fileID, _ string, wo
 	return s.deleteSharedFile(ctx, noteUUID, fileID, workspaceID)
 }
 
+func (s *storage) DeleteWorkspace(ctx context.Context, workspaceID string) error {
+	objects, err := s.client.ListFiles(ctx, s.bucketName, workspacePrefix(workspaceID))
+	if err != nil {
+		response := miniosdk.ToErrorResponse(err)
+		if response.Code == "NoSuchBucket" {
+			return nil
+		}
+		return wrapMinioError(err, "workspace files not found")
+	}
+
+	for _, object := range objects {
+		if err = s.client.DeleteFile(ctx, s.bucketName, object.Key); err != nil {
+			return wrapMinioError(err, "failed to delete workspace files")
+		}
+	}
+
+	return nil
+}
+
 func (s *storage) getSharedFile(ctx context.Context, noteUUID, fileID, workspaceID string) (domainfile.DownloadFile, error) {
 	key := sharedObjectKey(workspaceID, noteUUID, fileID)
 	object, err := s.client.GetFile(ctx, s.bucketName, key)

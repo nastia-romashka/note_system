@@ -65,6 +65,9 @@ class CategoryService:
 
         self.category_dao.delete_category(category=category)
 
+    def delete_workspace(self, workspace_id: str) -> None:
+        self.category_dao.delete_workspace(workspace_id=workspace_id)
+
     def create_note_node(self, note: CreateGraphNoteDTO) -> None:
         is_category_exist = self.category_dao.check_category_in_workspace(
             category_uuid=note.category_uuid,
